@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <style>
+            html, body, canvas {padding: 0px; margin: 0px; width: 100%; height: 100%; overflow: hidden;}
+            select { position: absolute; left: 0px; top: 0px;}
+        </style>
+        <script id="background-vertex-shader" type="x-shader/x-vertex">
+            attribute vec4 a_position;
+
+            uniform mat4 u_matrix;
+            
+            varying highp vec3 v_position;
+
+            void main() {
+                gl_Position = u_matrix * a_position;
+
+                v_position = a_position.xyz;
+            }
+        </script>
+        <script id="background-fragment-shader" type="x-shader/x-fragment">
+            varying highp vec3 v_position;
+
+            uniform samplerCube u_texture;
+
+            void main() {
+                gl_FragColor = textureCube(u_texture, v_position);
+            }
+        </script>
+
+        <script id="3d-vertex-shader" type="x-shader/x-vertex">
+            precision highp float;
+
+            attribute vec4 a_position;
+            attribute vec2 a_heightmapPos;
+            attribute vec3 a_normal;
+
+            uniform mat4 u_matrix;
+
+            uniform sampler2D u_heigthmap;
+
+            varying vec2 v_texCoord;
+            varying vec3 v_normal;
+            varying vec2 layerBalance;
+
+            void main() {
+                vec4 highmapVal = texture2D(u_heigthmap, a_heightmapPos);
+
+                float diff = 1.0/128.0;
+                float a = texture2D(u_heigthmap, a_heightmapPos - vec2(-diff,0.0)).x - highmapVal.x;
+                float b = texture2D(u_heigthmap, a_heightmapPos - vec2( diff,0.0)).x - highmapVal.x;
+                float c = texture2D(u_heigthmap, a_heightmapPos - vec2(0.0,-diff)).x - highmapVal.x;
+                float d = texture2D(u_heigthmap, a_heightmapPos - vec2(0.0, diff)).x - highmapVal.x;
+
+                vec3 cross_a = normalize(cross(vec3(0, c, -diff), vec3(-diff, a, 0)));
+                vec3 cross_b = normalize(cross(vec3(0, d, diff), vec3(diff, b, 0)));
+
+
+                v_normal = cross_a * 0.5 + cross_b * 0.5;
+
+                vec4 tmp_position = a_position;
+                tmp_position.y = highmapVal.x * 25.0;
+
+
+                layerBalance = highmapVal.yz;
+
+                gl_Position = u_matrix * tmp_position;
+                //gl_PointSize = 5.0;
+
+
+
+                v_texCoord = a_position.xz / 10.0;
+            }
+        </script>
+        <script id="3d-fragment-shader" type="x-shader/x-fragment">
+            precision highp float;
+
+            uniform sampler2D u_texture;
+            uniform sampler2D u_texture_2;
+            uniform sampler2D u_texture_3;
+
+            uniform bool u_wireframe;
+            uniform vec3 u_cursor;
+
+            varying vec2 v_texCoord;
+            varying vec3 v_normal;
+            varying vec2 layerBalance;
+
+            void main() {
+                vec3 layer_0 = pow(texture2D(u_texture, v_texCoord).xyz, vec3(2.2));
+                vec3 layer_1 = pow(texture2D(u_texture_2, v_texCoord).xyz, vec3(2.2));
+                vec3 layer_2 = pow(texture2D(u_texture_3, v_texCoord).xyz, vec3(2.2));
+
+                vec3 diffuse = mix(layer_0, layer_1, layerBalance.x);
+                diffuse = mix(diffuse, layer_2, layerBalance.y);
+
+                
+
+                float intensity = (max(0.0, dot(v_normal, normalize(vec3(1,1,0)))) * 2.0) + 0.6;
+
+                vec3 color = pow(diffuse * intensity, vec3(1.0/2.2));
+
+                if (length(v_texCoord - u_cursor.xy) <= u_cursor.z) {
+                    color += vec3(0.0, 0.0, 0.3);
+                }
+
+                gl_FragColor = vec4(color, 1.0);
+
+                if (u_wireframe) {
+                    gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0);
+                    
+                }
+            }
+        </script>
+    </head>
+    <body>
+        <canvas id="canvas"></canvas>
+        <canvas id="testcanvas" style="position: absolute; right: 0px; top: 0px; width: 128px; height: 128px;"></canvas>
+        <div style="position: absolute; left: 10px; top: 10px; background-color: rgba(32,32,32,0.8); border-radius: 10px; padding: 10px; cursor: default;">
+            <div style="color: #ffffff; border: 1px solid #000000; padding: 5px;" onclick="moveUp(16)">Slope up</div>
+            <div style="color: #ffffff; border: 1px solid #000000; padding: 5px;" onclick="moveUp(-16)">Slope down</div>
+        </div>
+        <script>
+            function createShader(ctx, type, id) {
+                var result = ctx.createShader(type);
+                ctx.shaderSource(result, document.getElementById(id).innerText);
+                ctx.compileShader(result);
+
+                var info = ctx.getShaderInfoLog(result);
+                console.log(info);
+
+                return result;
+            }
+
+            function createProgram(ctx, vertexShaderId, fragmentShaderId) {
+                var vertexShader = createShader(ctx, ctx.VERTEX_SHADER, vertexShaderId);
+                var fragmentShader = createShader(ctx, ctx.FRAGMENT_SHADER, fragmentShaderId);
+
+                var program = ctx.createProgram();
+                ctx.attachShader(program, vertexShader);
+                ctx.attachShader(program, fragmentShader);
+                ctx.linkProgram(program);
+
+                var info = ctx.getProgramInfoLog(program);
+                console.log(info);
+
+                return program;
+            }
+
+            function createTexture(ctx, url) {
+                
+
+                return new Promise(function(resolve, reject) {
+                    var result = ctx.createTexture();
+
+                    var image = new Image();
+                    image.src = url;
+                    image.crossOrigin = "";
+                    image.onload = function() {
+                        ctx.activeTexture(ctx.TEXTURE0);
+                        ctx.bindTexture(ctx.TEXTURE_2D, result);
+                        ctx.texImage2D(ctx.TEXTURE_2D, 0, ctx.RGB, ctx.RGB, ctx.UNSIGNED_BYTE, image);
+                        ctx.generateMipmap(ctx.TEXTURE_2D);
+
+                        resolve({tex: result, image: image});
+                    }
+                });
+            }
+
+            function loadEnvMap(ctx, base, images) {
+                var result = ctx.createTexture();
+                ctx.bindTexture(ctx.TEXTURE_CUBE_MAP, result);
+
+                images.forEach((url, index) => {
+                    var target = ctx.TEXTURE_CUBE_MAP_POSITIVE_X + index;
+                    
+                    var image = new Image();
+                    image.src = base + url;
+                    image.crossOrigin = "";
+                    image.onload = function() {
+                        ctx.bindTexture(ctx.TEXTURE_CUBE_MAP, result);
+                        ctx.texImage2D(target, 0, ctx.RGBA, ctx.RGBA, ctx.UNSIGNED_BYTE, image);
+                        ctx.generateMipmap(ctx.TEXTURE_CUBE_MAP);
+                    }
+                });
+
+                ctx.generateMipmap(ctx.TEXTURE_CUBE_MAP);
+                return result;
+            }
+
+            var mat4 = {
+                getProjection: function(aspect, fov, near, far) {
+                    var f = 1.0/Math.tan(fov/2.0);
+                    return [
+                        f/aspect, 0.0,                       0.0,  0.0,
+                        0.0     ,   f,                       0.0,  0.0,
+                        0.0     , 0.0,     (far+near)/(near-far), -1.0,
+                        0.0     , 0.0, (2.0*far*near)/(near-far),  0.0];
+                },
+                getXRotation: function(rotation) {
+                    return [
+                        1                  , 0                 , 0, 0,
+                        0,  Math.cos(rotation), Math.sin(rotation), 0,
+                        0, -Math.sin(rotation), Math.cos(rotation), 0,
+                        0, 0                  , 0                 , 1];
+                },
+                getYRotation: function(rotation) {
+                    return [
+                        Math.cos(rotation), 0, Math.sin(rotation), 0,
+                                    0, 1,             0, 0,
+                        -Math.sin(rotation), 0, Math.cos(rotation), 0,
+                                    0, 0,             0, 1];
+                },
+                getTranslate: function(x, y, z) {
+                    return [
+                        1,0,0,0,
+                        0,1,0,0,
+                        0,0,1,0,
+                        x,y,z,1];
+                },
+                multiply: function(l, r) {
+                    return [
+                        l[ 0] * r[0] + l[ 1] * r[4] + l[ 2] * r[ 8] + l[ 3] * r[12],
+                        l[ 0] * r[1] + l[ 1] * r[5] + l[ 2] * r[ 9] + l[ 3] * r[13],
+                        l[ 0] * r[2] + l[ 1] * r[6] + l[ 2] * r[10] + l[ 3] * r[14],
+                        l[ 0] * r[3] + l[ 1] * r[7] + l[ 2] * r[11] + l[ 3] * r[15],
+
+                        l[ 4] * r[0] + l[ 5] * r[4] + l[ 6] * r[ 8] + l[ 7] * r[12],
+                        l[ 4] * r[1] + l[ 5] * r[5] + l[ 6] * r[ 9] + l[ 7] * r[13],
+                        l[ 4] * r[2] + l[ 5] * r[6] + l[ 6] * r[10] + l[ 7] * r[14],
+                        l[ 4] * r[3] + l[ 5] * r[7] + l[ 6] * r[11] + l[ 7] * r[15],
+
+                        l[ 8] * r[0] + l[ 9] * r[4] + l[10] * r[ 8] + l[11] * r[12],
+                        l[ 8] * r[1] + l[ 9] * r[5] + l[10] * r[ 9] + l[11] * r[13],
+                        l[ 8] * r[2] + l[ 9] * r[6] + l[10] * r[10] + l[11] * r[14],
+                        l[ 8] * r[3] + l[ 9] * r[7] + l[10] * r[11] + l[11] * r[15],
+
+                        l[12] * r[0] + l[13] * r[4] + l[14] * r[ 8] + l[15] * r[12],
+                        l[12] * r[1] + l[13] * r[5] + l[14] * r[ 9] + l[15] * r[13],
+                        l[12] * r[2] + l[13] * r[6] + l[14] * r[10] + l[15] * r[14],
+                        l[12] * r[3] + l[13] * r[7] + l[14] * r[11] + l[15] * r[15]
+                    ];
+                },
+                transpose: function(i) {
+                    return [
+                        i[0], i[4], i[ 8], i[12],
+                        i[1], i[5], i[ 9], i[13],
+                        i[2], i[6], i[10], i[14],
+                        i[3], i[7], i[11], i[15],
+                    ]
+                }
+            };
+
+            var vec3 = {
+                add: function(l,r) {
+                    return [l[0]+r[0], l[1]+r[1], l[2]+r[2]];
+                },
+                subtract: function(l,r) {
+                    return [l[0]-r[0], l[1]-r[1], l[2]-r[2]];
+                },
+                multiply: function(l,r) {
+                    if (!Array.isArray(r)) r = [r,r,r];
+                    return [l[0]*r[0], l[1]*r[1], l[2]*r[2]];
+                }
+            }
+
+
+
+            var gl = canvas.getContext("webgl", {alpha: false});
+            var projectionMatrix;
+
+            function resize() {
+                gl.canvas.width = gl.canvas.clientWidth;
+                gl.canvas.height = gl.canvas.clientHeight;
+                gl.viewport(0,0,gl.canvas.width,gl.canvas.height);
+
+                projectionMatrix = mat4.getProjection(gl.canvas.width / gl.canvas.height, 70 * (Math.PI/180.0), 0.01, 100.0);
+            }
+
+            resize();
+            window.onresize = resize;
+
+            var backgroundImage = loadEnvMap(gl, "assets/background/", ["posx.jpg", "negx.jpg", "posy.jpg", "negy.jpg", "posz.jpg", "negz.jpg"]);
+
+            var backgroundProgram = createProgram(gl, "background-vertex-shader", "background-fragment-shader");
+            bg_a_position = gl.getAttribLocation(backgroundProgram, "a_position");
+            bg_u_matrix = gl.getUniformLocation(backgroundProgram, "u_matrix");
+
+
+            var program = createProgram(gl, "3d-vertex-shader", "3d-fragment-shader");
+            var a_position = gl.getAttribLocation(program, "a_position");
+            var a_heightmapPos = gl.getAttribLocation(program, "a_heightmapPos");
+            
+            var u_wireframe = gl.getUniformLocation(program, "u_wireframe");
+            var u_cursor = gl.getUniformLocation(program, "u_cursor");
+            var u_matrix = gl.getUniformLocation(program, "u_matrix");
+            var u_heigthmap = gl.getUniformLocation(program, "u_heigthmap");
+            var u_texture = gl.getUniformLocation(program, "u_texture");
+            var u_texture_2 = gl.getUniformLocation(program, "u_texture_2");
+            var u_texture_3 = gl.getUniformLocation(program, "u_texture_3");
+            
+
+
+            var textures = [];
+
+            var bufferDataRaw = [];
+            var indexBufferDataRaw = [];
+            var indexBufferLineDataRaw = [];
+
+            var terrainSize = 128;
+            var terrainSizeHalf = terrainSize / 2;
+
+            for (var y=0; y<=terrainSize; y++) {
+                for (var x=0; x<=terrainSize; x++) {
+                    bufferDataRaw.push(x-terrainSizeHalf,0,y-terrainSizeHalf);
+                    bufferDataRaw.push(x / terrainSize, y / terrainSize);
+                }
+            }
+
+            for (var y=0; y<terrainSize; y++) {
+                var oddRow = y%2 == 0;
+
+                for (var x=0; x<terrainSize; x++) {
+                    var offset = (terrainSize+1)*y;
+
+
+                    indexBufferLineDataRaw.push(offset+x, offset+x+ 1);
+                    indexBufferLineDataRaw.push(offset+x+terrainSize+2, offset+x   );
+                    indexBufferLineDataRaw.push(offset+x, offset+x+terrainSize + 1);
+
+/*
+                    if (oddRow == (x%2 == 0)) {
+                        indexBufferDataRaw.push(offset+x, offset+x+ 1, offset+x+terrainSize + 2);
+                        indexBufferDataRaw.push(offset+x, offset+x+terrainSize + 2, offset+x+terrainSize + 1);
+
+                        indexBufferLineDataRaw.push(offset+x, offset+x+ 1);
+                        indexBufferLineDataRaw.push(offset+x+terrainSize+2, offset+x   );
+                        indexBufferLineDataRaw.push(offset+x, offset+x+terrainSize + 1);
+                    } else {
+                        indexBufferDataRaw.push(offset+x, offset+x+ 1, offset+x+terrainSize+1);
+                        indexBufferDataRaw.push(offset+x+1, offset+x+terrainSize+2, offset+x+terrainSize+1);
+
+                        indexBufferLineDataRaw.push(offset+x   , offset+x+ 1);
+                        indexBufferLineDataRaw.push(offset+x+ 1, offset+x+terrainSize+1);
+                        indexBufferLineDataRaw.push(offset+x+terrainSize+1, offset+x   );
+                    }*/
+                }
+            }
+
+
+
+            var offset = 0;
+
+            for (var j=0; j<terrainSize; j++) {
+
+                indexBufferDataRaw.push(offset+129);
+                for (var i=0; i<terrainSize; i++) {
+                    indexBufferDataRaw.push(offset+i);
+                    indexBufferDataRaw.push(offset+130+i)
+                }
+                indexBufferDataRaw.push(offset+terrainSize);
+
+                if (j<terrainSize-1) {
+                    indexBufferDataRaw.push(offset + terrainSize, offset + 258, offset + 258, offset + 129);
+                }
+
+                offset += 129;
+            }
+
+
+
+            var bufferData = new Float32Array(bufferDataRaw);
+            var indexBufferData = new Int16Array(indexBufferDataRaw);
+            var indexBufferLineData = new Int16Array(indexBufferLineDataRaw);
+
+
+            var buffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+            gl.bufferData(gl.ARRAY_BUFFER, bufferData, gl.STATIC_DRAW);
+            
+            var elementBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, elementBuffer);
+            gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indexBufferData, gl.STATIC_DRAW);
+
+            var elementLineBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, elementLineBuffer);
+            gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indexBufferLineData, gl.STATIC_DRAW);
+
+
+
+
+            var cubeMapBufferData = new Float32Array([
+                -1, -1, -1,
+                 1, -1, -1,
+                 1,  1, -1,
+                -1,  1, -1,
+
+                -1, -1,  1,
+                 1, -1,  1,
+                 1,  1,  1,
+                -1,  1,  1,
+            ]);
+            var cubeMapBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, cubeMapBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, cubeMapBufferData, gl.STATIC_DRAW);
+
+            
+            var cubeMapIndexBufferData = new Int16Array([
+                0, 1, 2,    2, 3, 0,
+                1, 5, 6,    6, 2, 1,
+                5, 4, 7,    7, 6, 5,
+                4, 0, 3,    3, 7, 4,
+                4, 5, 1,    1, 0, 4,
+                6, 7, 3,    3, 2, 6
+            ]);
+            var cubeMapIndexBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, cubeMapIndexBuffer);
+            gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, cubeMapIndexBufferData, gl.STATIC_DRAW);
+
+
+
+            function drawBackground(matrix) {
+                gl.useProgram(backgroundProgram);
+                gl.enableVertexAttribArray(bg_a_position);
+
+                gl.bindBuffer(gl.ARRAY_BUFFER, cubeMapBuffer);
+                gl.vertexAttribPointer(bg_a_position, 3, gl.FLOAT, false, 3 * 4, 0);
+
+                gl.uniformMatrix4fv(bg_u_matrix, false, matrix);
+
+                gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, cubeMapIndexBuffer);
+                gl.drawElements(gl.TRIANGLES, cubeMapIndexBufferData.length, gl.UNSIGNED_SHORT, 0);
+
+                gl.disableVertexAttribArray(backgroundProgram.a_position);
+
+                gl.clear(gl.DEPTH_BUFFER_BIT);
+            }
+
+
+            var pos = [0,-30,-40];
+            var yaw = 0.0;
+            var pitch = 0.0;
+
+            var cursor = [0,0,1];
+
+            var mousePos = null;
+            canvas.onmousemove = function(e) {
+                if (!mousePos) return;
+
+                var delta = {x: mousePos.x - e.clientX, y: mousePos.y - e.clientY};
+                mousePos = {x: e.clientX, y: e.clientY};
+                
+                yaw += delta.x * 0.01;
+                pitch += -delta.y * 0.01;
+                
+
+                pitch = Math.max(-Math.PI/2, pitch);
+                pitch = Math.min( Math.PI/2, pitch);
+            };
+            canvas.onmousedown = e => { mousePos = {x: e.clientX, y: e.clientY}; };
+            canvas.onmouseup = e => { mousePos = null; };
+
+
+            var keys = {};
+
+            window.onkeydown = e => keys[e.key.toLowerCase()] = true;
+            window.onkeyup = e => keys[e.key.toLowerCase()] = false;
+
+
+            pitch = 1.0;
+
+
+
+            function drawFrame() {
+
+                var dir = [Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch)];
+                var side = [Math.sin(yaw+(Math.PI/2)), 0, Math.cos(yaw+(Math.PI/2))];
+
+                var speed = keys["shift"] ? 0.2 : 0.1;
+
+                if (keys["w"]) pos = vec3.add(pos, vec3.multiply(dir, speed));
+                if (keys["s"]) pos = vec3.subtract(pos, vec3.multiply(dir, speed));
+                if (keys["a"]) pos = vec3.add(pos, vec3.multiply(side, speed));
+                if (keys["d"]) pos = vec3.subtract(pos, vec3.multiply(side, speed));
+ 
+                if (keys["arrowup"]) { cursor[0] -= Math.sin(yaw) * 0.05; cursor[1] += Math.cos(yaw) * 0.05; }
+                if (keys["arrowdown"]) { cursor[0] += Math.sin(yaw) * 0.05; cursor[1] -= Math.cos(yaw) * 0.05; }
+                if (keys["arrowleft"]) { cursor[0] -= Math.cos(yaw) * 0.05; cursor[1] -= Math.sin(yaw) * 0.05; }
+                if (keys["arrowright"]) { cursor[0] += Math.cos(yaw) * 0.05; cursor[1] += Math.sin(yaw) * 0.05; }
+
+                if (keys["+"] || keys["="]) cursor[2] = Math.min(5.0, cursor[2] + 0.05);
+                if (keys["-"] || keys["_"]) cursor[2] = Math.max(0.1, cursor[2] - 0.05);
+
+                gl.clearColor(0,0,0,1);
+                gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+                gl.enable(gl.CULL_FACE);
+                gl.enable(gl.DEPTH_TEST);
+                gl.frontFace(gl.CCW);
+
+
+                viewMatrix = mat4.multiply(mat4.getYRotation(yaw), mat4.getXRotation(pitch));
+                drawBackground(mat4.multiply(viewMatrix, projectionMatrix));
+
+
+                gl.frontFace(gl.CW);
+                gl.useProgram(program);
+                gl.enableVertexAttribArray(a_position);
+                gl.enableVertexAttribArray(a_heightmapPos);
+                
+                gl.activeTexture(gl.TEXTURE3);
+                gl.bindTexture(gl.TEXTURE_2D, textures[3]);
+                gl.activeTexture(gl.TEXTURE2);
+                gl.bindTexture(gl.TEXTURE_2D, textures[0]);
+                gl.activeTexture(gl.TEXTURE1);
+                gl.bindTexture(gl.TEXTURE_2D, textures[1]);
+                gl.activeTexture(gl.TEXTURE0);
+                gl.bindTexture(gl.TEXTURE_2D, textures[2]);
+
+                gl.uniform1i(u_heigthmap, 2);
+                gl.uniform1i(u_texture, 0);
+                gl.uniform1i(u_texture_2, 1);
+                gl.uniform1i(u_texture_3, 3);
+
+                gl.uniform3f(u_cursor, cursor[0], -cursor[1], cursor[2]);
+
+                gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+                gl.vertexAttribPointer(a_position, 3, gl.FLOAT, false, 5 * 4, 0);
+                gl.vertexAttribPointer(a_heightmapPos, 2, gl.FLOAT, false, 5 * 4, 3 * 4);
+
+                viewMatrix = mat4.multiply(mat4.getTranslate(pos[0], pos[1], pos[2]), viewMatrix);
+                gl.uniformMatrix4fv(u_matrix, false, mat4.multiply(viewMatrix, projectionMatrix));
+
+                gl.uniform1i(u_wireframe, 0);
+                gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, elementBuffer);
+                gl.drawElements(gl.TRIANGLE_STRIP, indexBufferData.length, gl.UNSIGNED_SHORT, 0);
+
+                gl.uniform1i(u_wireframe, 1);
+                gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, elementLineBuffer);
+                gl.drawElements(gl.LINES, indexBufferLineData.length, gl.UNSIGNED_SHORT, 0);
+
+                gl.disableVertexAttribArray(a_position);
+                gl.disableVertexAttribArray(a_heightmapPos);
+                
+
+                window.requestAnimationFrame(drawFrame);
+            }
+
+            //window.requestAnimationFrame(drawFrame);
+
+function moveUp(scale) {
+    scale = scale || 32;
+
+    var testCanvas = document.getElementById("testcanvas");
+    var testContext = testCanvas.getContext("2d");
+
+
+    var size = cursor[2] * 20;
+
+    var pos = [(128-size) / 2, (128-size) / 2];
+    pos[0] += cursor[0] * 10;
+    pos[1] -= cursor[1] * 10;
+
+    var test = testContext.getImageData(pos[0], pos[1], size, size);
+    var halfW = test.width / 2;
+    for (var y=0; y<test.height; y++) {
+        for (var x=0; x<test.width; x++) {
+            var dist = Math.sqrt(Math.pow(x-halfW, 2) + Math.pow(y-halfW, 2)) / halfW;
+            if (dist <= 1.0) {
+
+                var offset = ((y * test.width) + x) * 4;
+                test.data[offset] += scale * (1.0-dist);
+            }
+        }
+    }
+
+    testContext.putImageData(test, pos[0], pos[1]);
+
+    gl.bindTexture(gl.TEXTURE_2D, textures[0]);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, testCanvas);
+    gl.generateMipmap(gl.TEXTURE_2D);
+}
+
+
+            createTexture(gl, "assets/height.png")
+                .then(val => {
+
+                    var testCanvas = document.getElementById("testcanvas");
+                    testCanvas.width = 128;
+                    testCanvas.height = 128;
+                    var testContext = testCanvas.getContext("2d");
+
+
+
+                    testContext.drawImage(val.image, 0, 0, 128, 128);
+/*
+                    var test = testContext.getImageData(54, 54, 20, 20);
+                    for (var y=0; y<test.height; y++) {
+                        for (var x=0; x<test.width; x++) {
+                            var dist = Math.sqrt(Math.pow(x-10, 2) + Math.pow(y-10, 2)) / 10;
+                            if (dist <= 1.0) {
+
+                                var offset = ((y * test.width) + x) * 4;
+                                test.data[offset] += 128 * (1.0-dist);
+
+                            }
+
+                            //console.log(x-10, y-10);
+                        }
+                    }
+
+                    testContext.putImageData(test, 54, 54);
+
+
+                    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, testCanvas);
+                    gl.generateMipmap(gl.TEXTURE_2D);*/
+
+                    //console.log(test);
+
+
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+                    textures.push(val.tex);
+                    return createTexture(gl, "assets/dirt.jpg")
+                })
+                .then(val => {
+                    textures.push(val.tex);
+                    return createTexture(gl, "assets/grass.jpg");
+                })
+                .then(val => {
+                    textures.push(val.tex);
+                    return createTexture(gl, "assets/rock.jpg");
+                })
+                .then(val => {
+                    textures.push(val.tex);
+
+                    window.requestAnimationFrame(drawFrame);
+                });
+
+        </script>
+    </body>
+</html>
