@@ -112,13 +112,55 @@
                 }
             }
         </script>
+        <style>
+            .toolbars {
+                position: absolute; 
+                left: 10px; 
+                top: 10px; 
+            }
+
+            .toolbar {
+                background-color: #101010;
+                border-radius: 10px; 
+                padding: 10px; 
+                cursor: default;
+                font-family: verdana;
+                font-size: 10pt;
+                font-weight: normal;
+                margin-bottom: 10px;
+            }
+
+            .toolbar > div {
+                color: #ffffff; border: 1px solid rgba(0,0,0,0); padding: 5px;
+                cursor: default;
+            }
+
+            .toolbar > div:hover {
+                border-color: #404040;
+                background-color: #202020;
+            }
+
+            .toolbar > div.checked {
+                border-color: #606060;
+                background-color: #404040;
+            }
+        </style>
     </head>
     <body>
         <canvas id="canvas"></canvas>
         <canvas id="testcanvas" style="position: absolute; right: 0px; top: 0px; width: 128px; height: 128px;"></canvas>
-        <div style="position: absolute; left: 10px; top: 10px; background-color: rgba(32,32,32,0.8); border-radius: 10px; padding: 10px; cursor: default;">
-            <div style="color: #ffffff; border: 1px solid #000000; padding: 5px;" onclick="moveUp(16)">Slope up</div>
-            <div style="color: #ffffff; border: 1px solid #000000; padding: 5px;" onclick="moveUp(-16)">Slope down</div>
+        <div class="toolbars">
+            <div class="toolbar">
+                <div id="tbWireFrame" class="checked" onclick="toggleWireframe()">Wireframe</div>
+                <div onclick="moveUp(16)">Slope up</div>
+                <div onclick="moveUp(-16)">Slope down</div>
+                <div onclick="egalize()">Egalize</div>
+            </div>
+            <div class="toolbar">
+                <div onclick="paint(0)">Grass</div>
+                <div onclick="paint(1)">Dirt</div>
+                <div onclick="paint(2)">Rock</div>
+            </div>
         </div>
         <script>
             function createShader(ctx, type, id) {
@@ -443,6 +485,8 @@
 
             var cursor = [0,0,1];
 
+            var showWireframe = true;
+
             var mousePos = null;
             canvas.onmousemove = function(e) {
                 if (!mousePos) return;
@@ -466,6 +510,7 @@
             window.onkeydown = e => keys[e.key.toLowerCase()] = true;
             window.onkeyup = e => keys[e.key.toLowerCase()] = false;
 
+            window.onmousewheel = e => cursor[2] = Math.max(0.1, Math.min(5.0, cursor[2] + (e.deltaY * 0.003)));
 
             pitch = 1.0;
 
@@ -534,9 +579,11 @@
                 gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, elementBuffer);
                 gl.drawElements(gl.TRIANGLE_STRIP, indexBufferData.length, gl.UNSIGNED_SHORT, 0);
 
-                gl.uniform1i(u_wireframe, 1);
-                gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, elementLineBuffer);
-                gl.drawElements(gl.LINES, indexBufferLineData.length, gl.UNSIGNED_SHORT, 0);
+                if (showWireframe) {
+                    gl.uniform1i(u_wireframe, 1);
+                    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, elementLineBuffer);
+                    gl.drawElements(gl.LINES, indexBufferLineData.length, gl.UNSIGNED_SHORT, 0);
+                }
 
                 gl.disableVertexAttribArray(a_position);
                 gl.disableVertexAttribArray(a_heightmapPos);
@@ -547,28 +594,39 @@
 
             //window.requestAnimationFrame(drawFrame);
 
-function moveUp(scale) {
-    scale = scale || 32;
+function toggleWireframe() {
+    showWireframe = !showWireframe;
 
+    tbWireFrame.className = showWireframe ? "checked" : "";
+}
+
+function applyTool(initializer, modifier) {
     var testCanvas = document.getElementById("testcanvas");
     var testContext = testCanvas.getContext("2d");
 
 
-    var size = cursor[2] * 20;
+    var size = cursor[2] * 40;
 
-    var pos = [(128-size) / 2, (128-size) / 2];
-    pos[0] += cursor[0] * 10;
-    pos[1] -= cursor[1] * 10;
+    var pos = [(256-size) / 2, (256-size) / 2];
+    pos[0] += cursor[0] * 20;
+    pos[1] -= cursor[1] * 20;
 
     var test = testContext.getImageData(pos[0], pos[1], size, size);
     var halfW = test.width / 2;
+
+    var extra = null;
+    if (initializer) extra = initializer({imageData: test});
+
+console.log("extra", extra);
+
     for (var y=0; y<test.height; y++) {
         for (var x=0; x<test.width; x++) {
             var dist = Math.sqrt(Math.pow(x-halfW, 2) + Math.pow(y-halfW, 2)) / halfW;
             if (dist <= 1.0) {
 
                 var offset = ((y * test.width) + x) * 4;
-                test.data[offset] += scale * (1.0-dist);
+
+                test.data[offset] = modifier({x:x, y:y, dist: dist, val: test.data[offset], extra: extra}) || test.data[offset];
             }
         }
     }
@@ -580,41 +638,67 @@ function moveUp(scale) {
     gl.generateMipmap(gl.TEXTURE_2D);
 }
 
+function paint(layer) {
+    applyTool(data => {
+        return data.imageData;
+    }, data => {
+        var offset = ((data.y * data.extra.width) + data.x) * 4;
+
+        if (layer == 0) {
+            data.extra.data[offset+1] = 0;
+            data.extra.data[offset+2] = 0;
+        }
+
+        if (layer == 1) {
+            data.extra.data[offset+1] = 255;
+            data.extra.data[offset+2] = 0;
+        }
+
+        if (layer == 2) {
+            data.extra.data[offset+2] = 255;
+        }
+
+        //data.extra.data[offset+1] = layer == 1 ? 255 : 0;
+        //data.extra.data[offset+2] = layer == 2 ? 255 : 0;
+        return data.val;
+    });
+}
+
+function egalize() {
+    applyTool(data => {
+        var center = [
+            Math.floor(data.imageData.width / 2),
+            Math.floor(data.imageData.height / 2)];
+
+        return data.imageData.data[((center[1] * data.imageData.width) + center[0]) * 4];
+
+    }, data => {
+        return data.extra;
+    })
+}
+
+function moveUp(scale) {
+    scale = scale || 32;
+
+    applyTool(null, data => data.val + scale * (1.0-data.dist));    
+}
+
 
             createTexture(gl, "assets/height.png")
                 .then(val => {
 
                     var testCanvas = document.getElementById("testcanvas");
-                    testCanvas.width = 128;
-                    testCanvas.height = 128;
-                    var testContext = testCanvas.getContext("2d");
+                    testCanvas.width = 256;
+                    testCanvas.height = 256;
+                    var testContext = testCanvas.getContext("2d", {alpha: true});
+                    testContext.imageSmoothingEnabled = false;
 
 
 
-                    testContext.drawImage(val.image, 0, 0, 128, 128);
-/*
-                    var test = testContext.getImageData(54, 54, 20, 20);
-                    for (var y=0; y<test.height; y++) {
-                        for (var x=0; x<test.width; x++) {
-                            var dist = Math.sqrt(Math.pow(x-10, 2) + Math.pow(y-10, 2)) / 10;
-                            if (dist <= 1.0) {
+                    console.log(val.image.width);
 
-                                var offset = ((y * test.width) + x) * 4;
-                                test.data[offset] += 128 * (1.0-dist);
+                    testContext.drawImage(val.image, 0, 0, 256, 256);
 
-                            }
-
-                            //console.log(x-10, y-10);
-                        }
-                    }
-
-                    testContext.putImageData(test, 54, 54);
-
-
-                    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, testCanvas);
-                    gl.generateMipmap(gl.TEXTURE_2D);*/
-
-                    //console.log(test);
 
 
                     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
