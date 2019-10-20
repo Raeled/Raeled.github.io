@@ -1,0 +1,2206 @@
+<html>
+<head>
+    <script id="3d-vertex-shader" type="x-shader/x-vertex">
+        precision highp float;
+
+        attribute vec4 a_position;
+        attribute vec2 a_texCoord;
+        attribute vec3 a_normal;
+
+        varying vec4 v_position;
+        varying vec2 v_texCoord;
+        varying vec3 v_normal;
+
+        uniform mat4 u_projectionMatrix;
+        uniform mat4 u_viewMatrix;
+        uniform mat4 u_modelMatrix;
+
+        void main() {
+            v_texCoord = a_texCoord;
+            v_normal = a_normal;
+
+            v_position = u_viewMatrix * u_modelMatrix * a_position;
+            gl_Position = u_projectionMatrix * v_position;
+        }
+    </script>
+    <script id="3d-fragment-shader" type="x-shader/x-fragment">
+        precision highp float;
+
+        uniform sampler2D u_texture;
+
+        uniform vec3 u_backgroundColor;
+
+        varying vec4 v_position;
+        varying vec2 v_texCoord;
+        varying vec3 v_normal;
+
+        uniform float u_fogStart;
+        uniform float u_fogEnd;
+
+        void main() {
+
+            vec4 diffuse = texture2D(u_texture, v_texCoord);
+
+
+            float direct = dot(v_normal, normalize(-vec3(-1.0,-1.5,-1.0))) * 0.3;
+            
+
+            //diffuse = vec4(v_normal * 0.5 + 0.5, 1.0);
+
+            diffuse = vec4(diffuse.xyz * (direct + 0.6), diffuse.w);
+
+            float dist = length(v_position.xyz);
+
+
+            //gl_FragColor = vec4(mix(diffuse.xyz, u_backgroundColor, clamp((dist-96.0)/32.0, 0.0, 1.0)), diffuse.w);
+
+            gl_FragColor = vec4(mix(diffuse.xyz, u_backgroundColor, clamp((dist-u_fogStart)/u_fogEnd, 0.0, 1.0)), diffuse.w);
+        
+            //gl_FragColor = vec4(v_normal * 0.5 + 0.5, 1.0);
+        }
+    </script>
+
+    <script id="frustum-vertex-shader" type="x-shader/x-vertex">
+        precision highp float;
+
+        attribute vec4 a_position;
+
+        uniform mat4 u_projectionMatrix;
+        uniform mat4 u_viewMatrix;
+        uniform mat4 u_modelMatrix;
+
+        void main() {
+            gl_Position = u_projectionMatrix * u_viewMatrix * u_modelMatrix * a_position;
+        }
+    </script>
+    <script id="frustum-fragment-shader" type="x-shader/x-fragment">
+        precision highp float;
+
+        uniform vec4 u_color;
+
+        void main() {
+            gl_FragColor = u_color;
+        }
+    </script>
+    <style>
+        * {padding: 0px; margin: 0px; }
+        #canvas { width: 100%; height: 100%; position: absolute; }
+        
+        .debug { position: absolute; top: 4px; left: 4px; }
+        .debug > div { background-color: rgba(255,255,255,0.7); padding: 5px; min-width: 10px; }
+
+        #inventoryToolbar {
+            border-radius: 10px; 
+            display: flex; 
+            position: absolute; 
+            left: 50%; bottom: 0px; 
+            background-color: rgba(0,0,0,0.7); 
+            width: 480px; height: 60px; 
+            margin-bottom: 10px; margin-left: -240px;
+        }
+
+        #inventoryMenu div:first-child .inventoryContainer:first-child { border-top-left-radius: 10px; }
+        #inventoryMenu div:first-child .inventoryContainer:last-child { border-top-right-radius: 10px; }
+        #inventoryMenu div:last-child .inventoryContainer:first-child { border-bottom-left-radius: 10px; }
+        #inventoryMenu div:last-child .inventoryContainer:last-child { border-bottom-right-radius: 10px; }
+        
+
+        #inventoryToolbar .inventoryContainer:first-child {
+            border-top-left-radius: 10px;
+            border-bottom-left-radius: 10px;
+        }
+
+        #inventoryToolbar .inventoryContainer:last-child {
+            border-top-right-radius: 10px;
+            border-bottom-right-radius: 10px;
+        }
+
+        .inventoryContainer {
+            border: 5px solid #666666;
+            margin: 0px;
+
+            width: 50px; height: 50px;
+        }
+
+        .inventoryContainer.active {
+            border: 5px solid #ffffff;
+            margin: 0px;
+        }
+
+        .inventoryIcon {
+            width: 32px; height: 32px;
+            background-size: 1600%;
+            background-position: -100% -100%;
+            background-image: url('default.png');
+            display: inline-block;
+            image-rendering: pixelated;
+
+            margin: 9px;
+        }
+
+        #menu {
+            display: none;
+            border-radius: 10px; position: absolute; left: 50%; top: 50%; margin-left: -200px; margin-top: -75px; width: 400px; height: 150px; background-color: rgba(0,0,0,0.7);
+        }
+
+        #menu > div {
+            line-height: 60px; text-align: center; font-size: 20pt; margin: 10px; padding: 0px 20px; border-radius: 10px; background-color: rgba(0,0,0,0.7); color: #ffffff
+        }
+
+        #menu > div:hover {
+            background-color: rgba(17, 0, 65, 0.7);
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <div class="debug">
+        <div id="position"></div>
+        <div id="rotation"></div>
+        <div id="cursor"></div>
+        <br/>
+        <div id="velocity"></div>
+        <div id="acceleration"></div>
+        <br/>
+        <div id="renderedChunks"></div>
+    </div>
+
+    <div style="position: absolute; left: 50%; top:50%; width: 1px; height: 20px; margin-top: -10px; background-color: #000000;"></div>
+    <div style="position: absolute; left: 50%; top:50%; width: 20px; height: 1px; margin-left: -10px; background-color: #000000;"></div>
+
+    <div id="inventoryMenu" style="border-radius: 10px; position: absolute; bottom: 80px; width: 480px; height: 240px; left: 50%; margin-left: -240px; background-color: rgba(0,0,0,0.7);">
+        <div style="display: flex;">
+            <div class="inventoryContainer"><div class="inventoryIcon" style="display: none; background-position: -200% -000%;"></div></div>
+            <div class="inventoryContainer"><div class="inventoryIcon" style="background-position: -200% -000%;"></div></div>
+            <div class="inventoryContainer"><div class="inventoryIcon" style="display: none; background-position: -200% -000%;"></div></div>
+            <div class="inventoryContainer"><div class="inventoryIcon" style="background-position: -300% -000%;"></div></div>
+            <div class="inventoryContainer"><div class="inventoryIcon" style="display: none; background-position: -200% -000%;"></div></div>
+            <div class="inventoryContainer"><div class="inventoryIcon" style="background-position: -500% -000%;"></div></div>
+            <div class="inventoryContainer"><div class="inventoryIcon" style="display: none; background-position: -200% -000%;"></div></div>
+            <div class="inventoryContainer"><div class="inventoryIcon" style="display: none; background-position: -200% -000%;"></div></div>
+        </div>
+        <div style="display: flex;">
+            <div class="inventoryContainer"><div class="inventoryIcon" style="display: none; background-position: -200% -000%;"></div></div>
+            <div class="inventoryContainer"><div class="inventoryIcon" style="display: none; background-position: -200% -000%;"></div></div>
+            <div class="inventoryContainer"><div class="inventoryIcon" style="display: none; background-position: -200% -000%;"></div></div>
+            <div class="inventoryContainer"><div class="inventoryIcon" style="display: none; background-position: -200% -000%;"></div></div>
+            <div class="inventoryContainer"><div class="inventoryIcon" style="display: none; background-position: -200% -000%;"></div></div>
+            <div class="inventoryContainer"><div class="inventoryIcon" style="background-position: -200% -100%;">25</div></div>
+            <div class="inventoryContainer"><div class="inventoryIcon" style="background-position: -000% -100%;"></div></div>
+            <div class="inventoryContainer"><div class="inventoryIcon" style="background-position: -400% -100%;"></div></div>
+        </div>
+        <div style="display: flex;">
+            <div class="inventoryContainer"><div class="inventoryIcon" style="background-position: -000% -200%;"></div></div>
+            <div class="inventoryContainer"><div class="inventoryIcon" style="background-position: -100% -200%;"></div></div>
+            <div class="inventoryContainer"><div class="inventoryIcon" style="background-position: -200% -200%;"></div></div>
+            <div class="inventoryContainer"><div class="inventoryIcon" style="display: none; background-position: -200% -000%;"></div></div>
+            <div class="inventoryContainer"><div class="inventoryIcon" style="display: none; background-position: -200% -000%;"></div></div>
+            <div class="inventoryContainer"><div class="inventoryIcon" style="display: none; background-position: -200% -000%;"></div></div>
+            <div class="inventoryContainer"><div class="inventoryIcon" style="display: none; background-position: -200% -000%;"></div></div>
+            <div class="inventoryContainer"><div class="inventoryIcon" style="display: none; background-position: -200% -000%;"></div></div>
+        </div>
+        <div style="display: flex;">
+            <div class="inventoryContainer"><div class="inventoryIcon" style="background-position: -200% -300%;"></div></div>
+            <div class="inventoryContainer"><div class="inventoryIcon" style="background-position: -300% -300%;"></div></div>
+            <div class="inventoryContainer"><div class="inventoryIcon" style="display: none; background-position: -200% -000%;"></div></div>
+            <div class="inventoryContainer"><div class="inventoryIcon" style="display: none; background-position: -200% -000%;"></div></div>
+            <div class="inventoryContainer"><div class="inventoryIcon" style="display: none; background-position: -200% -000%;"></div></div>
+            <div class="inventoryContainer"><div class="inventoryIcon" style="display: none; background-position: -200% -000%;"></div></div>
+            <div class="inventoryContainer"><div class="inventoryIcon" style="display: none; background-position: -200% -000%;"></div></div>
+            <div class="inventoryContainer"><div class="inventoryIcon" style="display: none; background-position: -200% -000%;"></div></div>
+        </div>
+    </div>
+
+    <div id="inventoryToolbar">
+        <div class="inventoryContainer active"><div class="inventoryIcon" style="background-position: -500% -100%;"></div></div>
+        <div class="inventoryContainer"><div class="inventoryIcon" style="background-position: -200% -000%;"></div></div>
+        <div class="inventoryContainer"><div class="inventoryIcon" style="background-position: -300% -000%;"></div></div>
+        <div class="inventoryContainer"><div class="inventoryIcon" style="background-position: -400% -000%;"></div></div>
+        <div class="inventoryContainer"><div class="inventoryIcon" style="background-position: -000% -200%;"></div></div>
+        <div class="inventoryContainer"><div class="inventoryIcon" style="background-position: -100% -200%;"></div></div>
+        <div class="inventoryContainer"><div class="inventoryIcon" style="background-position: -200% -200%;"></div></div>
+        <div class="inventoryContainer"><div class="inventoryIcon" style="background-position: -200% -300%;"></div></div>
+    </div>
+
+    <div id="menu" style="display: none;">
+        <div id="menu_save">Save</div>
+        <div id="menu_continue">Continue</div>
+    </div>
+
+    <script>
+
+
+        var UIDragging = null;
+        var UICanDrop = false;
+        var UIDragOffset;
+        var UIDragElement = document.createElement("div");
+        UIDragElement.className = "inventoryIcon";
+        UIDragElement.style.position = "absolute";
+        UIDragElement.style.margin = "0px";
+        UIDragElement.style.pointerEvents = "none";
+        UIDragElement.style.backgroundPosition = "-200% -000%";
+
+        document.body.appendChild(UIDragElement);
+
+        window.onmousemove = e => {
+            if (UIDragging) {
+                UIDragElement.style.left = (e.clientX - UIDragOffset[0]) + "px";
+                UIDragElement.style.top = (e.clientY - UIDragOffset[1]) + "px";
+            }
+        }
+
+        window.onmouseup = e => {
+            UICanDrop = true;
+
+            //console.log(e);
+        }
+        
+        Array.from(document.querySelectorAll("#inventoryToolbar .inventoryContainer > .inventoryIcon")).forEach((element, index) => {
+            element.inventoryIndex = index;
+        });
+
+        Array.from(document.querySelectorAll("#inventoryMenu .inventoryContainer > .inventoryIcon")).forEach((element, index) => {
+            element.inventoryIndex = index + 8;
+        });
+
+        Array.from(document.querySelectorAll(".inventoryContainer > .inventoryIcon")).forEach(element => {
+            element.onmousedown = function(e) {
+                if (UIDragging) return;
+
+                //console.log(element.inventoryIndex);
+
+
+                UIDragging = {id: activePlayer.inventory[element.inventoryIndex]};
+                UICanDrop = false;
+                UIDragOffset = [e.offsetX, e.offsetY];
+
+                activePlayer.inventory[element.inventoryIndex] = null;
+
+                UIDragElement.style.display = "";
+                UIDragElement.style.backgroundPosition = this.style.backgroundPosition;
+                UIDragElement.style.left = (e.clientX - UIDragOffset[0]) + "px";
+                UIDragElement.style.top = (e.clientY - UIDragOffset[1]) + "px";
+
+                this.style.display = "none";
+            }
+
+            element.parentNode.inventoryItem = element;
+        });
+
+        Array.from(document.getElementsByClassName("inventoryContainer")).forEach(element => {
+            element.onmousedown = function(e) {
+                ////console.log(element.inventoryItem);
+
+                if (UIDragging && UICanDrop) {
+
+                    if (element.inventoryItem.style.display == "none") {
+                        element.inventoryItem.style.display = "";
+                        element.inventoryItem.style.backgroundPosition = UIDragElement.style.backgroundPosition;
+
+                        console.log(element.inventoryItem.inventoryIndex);
+
+                        activePlayer.inventory[element.inventoryItem.inventoryIndex] = UIDragging.id;
+
+                        UIDragging = null;
+                        UIDragElement.style.display = "none";
+                    } else {
+                        const oldPosition = element.inventoryItem.style.backgroundPosition;
+                        const oldItemId = activePlayer.inventory[element.inventoryItem.inventoryIndex];
+
+                        activePlayer.inventory[element.inventoryItem.inventoryIndex] = UIDragging.id;
+                        UIDragging = {id: oldItemId};
+
+                        element.inventoryItem.style.display = "";
+                        element.inventoryItem.style.backgroundPosition = UIDragElement.style.backgroundPosition;
+
+                        UIDragElement.style.backgroundPosition = oldPosition;
+                    }
+                }
+
+                
+            }
+        });
+
+        function setActiveItem(ndx) {
+            var index = 0;
+
+            document.getElementById("inventoryToolbar").childNodes.forEach(val => {
+                if (val.tagName == "DIV") {
+                    val.className = index == ndx ? "inventoryContainer active" : "inventoryContainer";
+                    index++;
+                }
+            });
+        }
+
+        document.getElementById("menu_continue").onclick = e => {
+            document.getElementById("menu").style.display = "none";
+            canvas.requestPointerLock();
+        }
+
+        document.getElementById("menu_save").onclick = e => {
+            world.save();
+        }
+
+        //setActiveItem(3);
+
+
+        var mat4 = {
+            getIdentity: function() {
+                return [
+                    1, 0, 0, 0,
+                    0, 1, 0, 0,
+                    0, 0 ,1, 0,
+                    0, 0, 0, 1];
+            },
+            getProjection: function(aspect, fov, near, far) {
+                var f = 1.0/Math.tan(fov/2.0);
+                return [
+                    f/aspect, 0.0,                       0.0,  0.0,
+                    0.0     ,   f,                       0.0,  0.0,
+                    0.0     , 0.0,     (far+near)/(near-far), -1.0,
+                    0.0     , 0.0, (2.0*far*near)/(near-far),  0.0];
+            },
+            getXRotation: function(rotation) {
+                return [
+                    1                  , 0                 , 0, 0,
+                    0,  Math.cos(rotation), Math.sin(rotation), 0,
+                    0, -Math.sin(rotation), Math.cos(rotation), 0,
+                    0, 0                  , 0                 , 1];
+            },
+            getYRotation: function(rotation) {
+                return [
+                    Math.cos(rotation), 0, Math.sin(rotation), 0,
+                                0, 1,             0, 0,
+                    -Math.sin(rotation), 0, Math.cos(rotation), 0,
+                                0, 0,             0, 1];
+            },
+            getTranslate: function(x, y, z) {
+                return [
+                    1,0,0,0,
+                    0,1,0,0,
+                    0,0,1,0,
+                    x,y,z,1];
+            },
+            multiply: function(l, r) {
+                return [
+                    l[ 0] * r[0] + l[ 1] * r[4] + l[ 2] * r[ 8] + l[ 3] * r[12],
+                    l[ 0] * r[1] + l[ 1] * r[5] + l[ 2] * r[ 9] + l[ 3] * r[13],
+                    l[ 0] * r[2] + l[ 1] * r[6] + l[ 2] * r[10] + l[ 3] * r[14],
+                    l[ 0] * r[3] + l[ 1] * r[7] + l[ 2] * r[11] + l[ 3] * r[15],
+
+                    l[ 4] * r[0] + l[ 5] * r[4] + l[ 6] * r[ 8] + l[ 7] * r[12],
+                    l[ 4] * r[1] + l[ 5] * r[5] + l[ 6] * r[ 9] + l[ 7] * r[13],
+                    l[ 4] * r[2] + l[ 5] * r[6] + l[ 6] * r[10] + l[ 7] * r[14],
+                    l[ 4] * r[3] + l[ 5] * r[7] + l[ 6] * r[11] + l[ 7] * r[15],
+
+                    l[ 8] * r[0] + l[ 9] * r[4] + l[10] * r[ 8] + l[11] * r[12],
+                    l[ 8] * r[1] + l[ 9] * r[5] + l[10] * r[ 9] + l[11] * r[13],
+                    l[ 8] * r[2] + l[ 9] * r[6] + l[10] * r[10] + l[11] * r[14],
+                    l[ 8] * r[3] + l[ 9] * r[7] + l[10] * r[11] + l[11] * r[15],
+
+                    l[12] * r[0] + l[13] * r[4] + l[14] * r[ 8] + l[15] * r[12],
+                    l[12] * r[1] + l[13] * r[5] + l[14] * r[ 9] + l[15] * r[13],
+                    l[12] * r[2] + l[13] * r[6] + l[14] * r[10] + l[15] * r[14],
+                    l[12] * r[3] + l[13] * r[7] + l[14] * r[11] + l[15] * r[15]
+                ];
+            },
+            transpose: function(i) {
+                return [
+                    i[0], i[4], i[ 8], i[12],
+                    i[1], i[5], i[ 9], i[13],
+                    i[2], i[6], i[10], i[14],
+                    i[3], i[7], i[11], i[15],
+                ]
+            },
+            fromQuaternion: function(q) {
+                let x = q[0];
+                let y = q[1];
+                let z = q[2];
+                let w = q[3];
+
+                const sqw = w * w;
+                const sqx = x * x;
+                const sqy = y * y;
+                const sqz = z * z;
+
+                // invs (inverse square length) is only required if quaternion is not already normalised
+                const invs = 1 / (sqx + sqy + sqz + sqw)
+                m00 = ( sqx - sqy - sqz + sqw) * invs;
+                m11 = (-sqx + sqy - sqz + sqw) * invs;
+                m22 = (-sqx - sqy + sqz + sqw) * invs;
+                
+                let tmp1 = x * y;
+                let tmp2 = z * w;
+                m10 = 2.0 * (tmp1 + tmp2) * invs;
+                m01 = 2.0 * (tmp1 - tmp2) * invs;
+                
+                tmp1 = x * z;
+                tmp2 = y * w;
+                m20 = 2.0 * (tmp1 - tmp2) * invs;
+                m02 = 2.0 * (tmp1 + tmp2) * invs;
+
+                tmp1 = y * z;
+                tmp2 = x * w;
+                m21 = 2.0 * (tmp1 + tmp2) * invs;
+                m12 = 2.0 * (tmp1 - tmp2) * invs;
+
+                return [
+                    m00, m10, m20, 0,
+                    m01, m11, m21, 0,
+                    m02, m12, m22, 0,
+                    0  , 0  , 0  , 1
+                ];
+            }
+        };
+
+        var vec3 = {
+            add: function(l,r) {
+                return [l[0]+r[0], l[1]+r[1], l[2]+r[2]];
+            },
+            subtract: function(l,r) {
+                return [l[0]-r[0], l[1]-r[1], l[2]-r[2]];
+            },
+            multiply: function(l,r) {
+                if (!Array.isArray(r)) r = [r,r,r];
+                return [l[0]*r[0], l[1]*r[1], l[2]*r[2]];
+            }
+        }
+    </script>
+    <script src="perlin.js"></script>
+    <script>
+        function createShader(ctx, type, id) {
+            var result = ctx.createShader(type);
+            ctx.shaderSource(result, document.getElementById(id).innerText);
+            ctx.compileShader(result);
+
+            var info = ctx.getShaderInfoLog(result);
+            if (info) console.log(info);
+
+            return result;
+        }
+
+        function createProgram(ctx, vertexShaderId, fragmentShaderId) {
+            var vertexShader = createShader(ctx, ctx.VERTEX_SHADER, vertexShaderId);
+            var fragmentShader = createShader(ctx, ctx.FRAGMENT_SHADER, fragmentShaderId);
+
+            var program = ctx.createProgram();
+            ctx.attachShader(program, vertexShader);
+            ctx.attachShader(program, fragmentShader);
+            ctx.linkProgram(program);
+
+            var info = ctx.getProgramInfoLog(program);
+            if (info) console.log(info);
+
+            return program;
+        }
+
+        function encodeSimpleRLE(data) {
+            var packedChunk = "";
+
+            var curValue = -1;
+            var valueCount = 0;
+            data.forEach(val => {
+                if (curValue == val) {
+                    valueCount++;
+                } else {
+                    if (valueCount > 0)
+                        packedChunk += valueCount.toString(16) + "x" + curValue.toString(16) + ",";
+
+                    valueCount = 1;
+                    curValue = val;
+                }
+            })
+
+            if (valueCount > 0)
+                packedChunk += valueCount.toString(16) + "x" + curValue.toString(16) + ",";
+
+            return packedChunk;
+        }
+
+        function decodeSimpleRLE(str) {
+            var result = [];
+
+            str.split(",").forEach(item => {
+                var lenVal = item.split("x");
+
+                if (lenVal.length == 2) {
+                    const length = parseInt(lenVal[0], 16);
+                    const val = parseInt(lenVal[1], 16);
+
+                    for (var i=0; i<length;i++) result.push(val);
+                }
+            });
+
+            return result;
+        }
+
+
+        var canvas = document.getElementById("canvas");
+        var gl = canvas.getContext("webgl", {alpha: false, stencil: true});
+
+        var program = createProgram(gl, "3d-vertex-shader", "3d-fragment-shader");
+        program.a_position = gl.getAttribLocation(program, "a_position");
+        program.a_texCoord = gl.getAttribLocation(program, "a_texCoord");
+        program.a_normal = gl.getAttribLocation(program, "a_normal");
+        program.u_projectionMatrix = gl.getUniformLocation(program, "u_projectionMatrix");
+        program.u_viewMatrix = gl.getUniformLocation(program, "u_viewMatrix");
+        program.u_modelMatrix = gl.getUniformLocation(program, "u_modelMatrix");
+        program.u_backgroundColor = gl.getUniformLocation(program, "u_backgroundColor");
+
+        program.u_fogStart = gl.getUniformLocation(program, "u_fogStart");
+        program.u_fogEnd = gl.getUniformLocation(program, "u_fogEnd");
+
+        gl.useProgram(program);
+        gl.uniform1f(program.u_fogStart, 96.0);
+        gl.uniform1f(program.u_fogEnd, 64.0);
+
+
+
+        var frustumProgram = createProgram(gl, "frustum-vertex-shader", "frustum-fragment-shader");
+        frustumProgram.a_position = gl.getAttribLocation(frustumProgram, "a_position");
+        frustumProgram.u_projectionMatrix = gl.getUniformLocation(frustumProgram, "u_projectionMatrix");
+        frustumProgram.u_viewMatrix = gl.getUniformLocation(frustumProgram, "u_viewMatrix");
+        frustumProgram.u_modelMatrix = gl.getUniformLocation(frustumProgram, "u_modelMatrix");
+        frustumProgram.u_color = gl.getUniformLocation(frustumProgram, "u_color");
+        
+
+        window.onresize = () => {
+            canvas.width = canvas.offsetWidth;
+            canvas.height = canvas.offsetHeight;
+            gl.viewport(0,0,canvas.width, canvas.height);
+        };
+
+        window.onresize();
+
+        
+
+        
+
+        
+        
+
+
+        var blockTypes = [
+            { name: "air", block: false },
+            { name: "bedrock", block: true, image: 17 },
+            { name: "stone", block: true, image: 1 },
+            { name: "coblestone", block: true, image: 16 },
+            { name: "dirt", block: true, image: 2 },
+            { name: "grass", block: true, image: [10*16 + 9, 3, 3, 3, 3, 2] },
+            { name: "planks", block: true, image: 4 },
+            { name: "bricks", block: true, image: 7 },
+
+            { name: "tree", block: true, image: [21,20,20,20,20,21] },
+            { name: "leafes", block: true, image: 3*16 + 4 },
+            { name: "coalore", block: true, image: 2*16 + 2 },
+            { name: "ironore", block: true, image: 2*16 + 1 },
+            { name: "goldore", block: true, image: 2*16 + 0 },
+            { name: "diamondore", block: true, image: 3*16 + 2 },
+            { name: "redstoneore", block: true, image: 3*16 + 3 },
+
+            { name: "tnt", block: true, image: [9,8,8,8,8,10]},
+            { name: "netherrock", block: true, image: 6*16 + 7},
+            { name: "obsidian", block: true, image: 11*16 + 7},
+            { name: "lava", block: true, image: 14*16 + 13 },
+            { name: "water", block: true, image: 12*16 + 13},
+            { name: "glass", block: true, image: 3*16 + 1},
+            { name: "chest", block: true, image: [25, 27, 26, 26, 26, 25]},
+            { name: "workbench", block: true, image: [43, 59, 59, 59, 59, 4]},
+            { name: "furnace", block: true, image: [62,44,45,45,45,62]},
+        ];
+
+        // convert single image to 6 sided array
+        blockTypes.forEach(blockType => {
+            if (!Array.isArray(blockType.image)) {
+                blockType.image = [blockType.image, blockType.image, blockType.image, blockType.image, blockType.image, blockType.image];
+            }
+
+            blockType.iconImage = blockType.image[1];
+        });
+
+        // cleanup atlas
+        let nextNewImage = 0;
+        let blockTypeImageMap = [];
+
+        blockTypes.forEach(blockType => {
+            blockType.image = blockType.image.map(imageIndex => {
+                if (imageIndex == undefined) return;
+
+                if (blockTypeImageMap[imageIndex] == undefined) {
+                    blockTypeImageMap[imageIndex] = nextNewImage++;
+                }
+
+                return blockTypeImageMap[imageIndex];
+            });
+        });
+
+
+
+
+
+        var atlas = gl.createTexture();
+        const atlasBorder = 6;
+        const atlasSize = 256;
+        const atlasItemSize = 16 + atlasBorder + atlasBorder;
+        const atlasPerRow = Math.floor(atlasSize / atlasItemSize);
+        const atlasPixel = 1/atlasSize;
+
+        var img = new Image();
+        img.src = "default.png";
+        img.onload = () => {
+
+            let atlasCanvas = document.createElement("canvas");
+            atlasCanvas.width = atlasSize;
+            atlasCanvas.height = atlasSize;
+
+            atlasCanvas.style = "width: 256px; height: 256px; right: 0px; top: 0px; position: absolute; image-rendering: pixelated;";
+            document.body.appendChild(atlasCanvas);
+
+            atlasContext = atlasCanvas.getContext("2d");
+            atlasContext.imageSmoothingEnabled = false;
+
+            blockTypeImageMap.forEach((dst, src) => {
+                srcX = (src % 16) * 16;
+                srcY = (Math.floor(src / 16)) * 16;
+                dstX = (dst % atlasPerRow) * atlasItemSize;
+                dstY = (Math.floor(dst / atlasPerRow)) * atlasItemSize;
+
+
+                atlasContext.drawImage(img, srcX   , srcY   , 16, 16,   dstX + atlasBorder     , dstY + atlasBorder     ,          16,          16);
+
+                atlasContext.drawImage(img, srcX   , srcY   , 16, 1 ,   dstX + atlasBorder     , dstY                   ,          16, atlasBorder);
+                atlasContext.drawImage(img, srcX   , srcY+15, 16, 1 ,   dstX + atlasBorder     , dstY + atlasBorder + 16,          16, atlasBorder);
+                atlasContext.drawImage(img, srcX   , srcY   ,  1, 16,   dstX                   , dstY + atlasBorder     , atlasBorder,          16);
+                atlasContext.drawImage(img, srcX+15, srcY   ,  1, 16,   dstX + atlasBorder + 16, dstY + atlasBorder     , atlasBorder,          16);
+
+                atlasContext.drawImage(img, srcX   , srcY   ,  1,  1,   dstX                   , dstY                   , atlasBorder, atlasBorder);
+                atlasContext.drawImage(img, srcX+15, srcY   ,  1,  1,   dstX + atlasBorder + 16, dstY                   , atlasBorder, atlasBorder);
+                atlasContext.drawImage(img, srcX   , srcY+15,  1,  1,   dstX                   , dstY + atlasBorder + 16, atlasBorder, atlasBorder);
+                atlasContext.drawImage(img, srcX+15, srcY+15,  1,  1,   dstX + atlasBorder + 16, dstY + atlasBorder + 16, atlasBorder, atlasBorder);
+            });
+
+
+
+            gl.bindTexture(gl.TEXTURE_2D, atlas);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, atlasCanvas);
+            //gl.generateMipmap(gl.TEXTURE_2D);
+        }
+
+
+
+        let activePlayer = {
+            name: "Player",
+            pos: {x: 0, y: 0, z: 0},
+            acceleration: { x: 0, y: 0, z: -15.0},
+            velocity: { x: 0, y: 0, z: 0},
+            standing: false,
+            inventory: [ 8,  4,  5,    6,   12,   21,   22,   23,
+                         2,  3,  4,    5,    6,    7,    8, null,
+                         9, 10, 11,   12,   13,   14, null, null,
+                        15, 16, 17,   18,   19,   20,   21, null,
+                        22, 23],
+            activeItem: 0,
+        }
+
+        function updateUI() {
+            Array.from(document.querySelectorAll(".inventoryContainer .inventoryIcon")).forEach((icon, index) => {
+
+                const item = activePlayer.inventory[icon.inventoryIndex];
+                if (item) {
+                    const itemDef = blockTypes[item];
+
+                    const backgroundPositionX = itemDef.iconImage % 16;
+                    const backgroundPositionY = Math.floor(itemDef.iconImage / 16);
+
+                    icon.style.display = "";
+                    icon.style.backgroundPosition = "-" + backgroundPositionX + "00% -" + backgroundPositionY + "00%";
+                } else {
+                    icon.style.display = "none";
+                }
+            });
+        }
+
+        updateUI();
+
+        
+        const perlin = new Perlin();
+
+        console.log(perlin.get(0.5,0.5, 0.5));
+
+
+        const posOffset = (x,y,z) => z * 256 + y * 16 + x;
+
+        function createNetherChunk(x, y) {
+            var result = {
+                x: x, y: y,
+                elementCount: 0,
+                dirty: true,
+                saved: true,
+                buffer: gl.createBuffer(),
+                data: []
+            };
+
+            // bedrock layer
+            for (var j=0; j<16*16; j++) {
+                result.data.push(1);
+            }
+
+            var extraLayer = 127 - (result.data.length / (16*16));
+            for (var i=0; i<extraLayer; i++) {
+
+                for (var j=0; j<16*16; j++) {
+                    result.data.push(0);
+                }
+
+            }
+
+            for (var x2=0; x2<16; x2++)
+            for (var y2=0; y2<16; y2++)
+            for (var z2=1; z2<127; z2++) {
+
+                
+
+                const realX = x*16+x2;
+                const realY = y*16+y2;
+
+                var val = perlin.get(realX * 0.1, realY * 0.1, z2 * 0.1);
+
+                var factor = Math.min(0.6, Math.pow( Math.min(z2, 127-z2),2)/400);
+                
+                //=MIN(POW(MIN(A1,127-A1),2)/400, 0.6)
+
+
+                if (val > factor) {
+                    result.data[posOffset(x2,y2,z2)] = 16;
+                } else {
+                    if (z2 < 20) {
+                        result.data[posOffset(x2,y2,z2)] = 18;
+                    }
+                }
+            }
+
+            // bedrock layer
+            for (var j=0; j<16*16; j++) {
+                result.data.push(1);
+            }
+
+            return result;
+        }
+
+
+        /*
+        for (z2=1; z2<127; z2++) {
+            var factor = Math.min(0.6, Math.pow( Math.min(z2, 127-z2)/400,2));
+
+            console.log(factor)
+        }*/
+
+        function createChunk(x, y) {
+            var result = {
+                x: x, y: y,
+                elementCount: 0,
+                dirty: true,
+                saved: true,
+                buffer: gl.createBuffer(),
+                data: []
+            };
+
+            // bedrock layer
+            for (var j=0; j<16*16; j++) {
+                result.data.push(1);
+            }
+
+            var extraLayer = 128 - (result.data.length / (16*16));
+            for (var i=0; i<extraLayer; i++) {
+
+                for (var j=0; j<16*16; j++) {
+                    result.data.push(0);
+                }
+
+            }
+
+            for (var x2=0; x2<16; x2++)
+            for (var y2=0; y2<16; y2++) {
+
+                const realX = x*16+x2;
+                const realY = y*16+y2;
+
+                //const height = Math.floor(perlin.get(realX*0.05,realY*0.05,0.5) * 10)+25;
+
+                //var height = perlin.get(realX*0.005,realY*0.005,0.5);
+                //height += (perlin.get(realX * 0.05, realY * 0.05, 0.5) - 0.5) * 0.2;
+
+                //height = Math.floor(height*80)+10;
+                var multiply = 0.005;
+                var multiply2 = 0.04;
+                var rough = perlin.get(realX * multiply,realY * multiply, 0.5);
+                rough += (perlin.get(realX * multiply2, realY * multiply2, 0.5) - 0.5) * 0.2;
+                
+                rough = Math.max(Math.min((rough-0.5) * 10, 1.0), 0.0);
+
+                var noGrass = rough > 0.05 && rough < 0.95;
+
+                rough += (perlin.get(realX * multiply2, realY * multiply2, 0.5) - 0.5) * 0.2;
+
+                var height = rough * 50 + 4;
+
+                height = Math.floor(height);
+
+                for (var i=0; i<height; i++) {
+                    result.data[posOffset(x2,y2,i+1)] = 2;
+                }
+                result.data[posOffset(x2,y2,height+1)] = noGrass ? 2 : 4;
+                result.data[posOffset(x2,y2,height+2)] = noGrass ? 2 : 4;
+                result.data[posOffset(x2,y2,height+3)] = noGrass ? 2 : 5;
+            }
+
+            for (var x2=0; x2<16; x2++)
+            for (var y2=0; y2<16; y2++)
+            for (var z2=0; z2<64; z2++) {
+
+                if (result.data[posOffset(x2,y2,z2)] != 2)  continue;
+
+                const realX = x*16+x2;
+                const realY = y*16+y2;
+
+                var val = perlin.get(realX * 0.1, realY * 0.1, z2 * 0.1);
+
+                if (val > 0.8) {
+                    result.data[posOffset(x2,y2,z2)] = 10;
+                } 
+            }
+
+            return result;
+        }
+
+        function createMinimalChunk(x, y) {
+            var result = {
+                x: x, y: y,
+                elementCount: 0,
+                dirty: true,
+                saved: true,
+                buffer: gl.createBuffer(),
+                data: []
+            };
+
+            // bedrock layer
+            for (var j=0; j<16*16; j++) {
+                result.data.push(1);
+            }
+
+            // air layers
+            for (var i=0; i<127; i++) {
+                for (var j=0; j<16*16; j++) {
+                    result.data.push(0);
+                }
+            }
+
+            return result;
+        }
+
+
+
+        function World(id, worldFactory, backgroundColor) {
+            this.chunks = [];
+            this.id = id;
+            this.worldFactory = worldFactory;
+            this.backgroundColor = backgroundColor;
+            this.loadingList = [{x:0, y:0}];
+        };
+        World.prototype.findChunk = function(x, y) {
+            var result = this.chunks.find(chunk => chunk.x == x && chunk.y == y);
+
+            
+
+
+            if (!result) {
+                
+
+                //result = this.worldFactory(x, y);
+
+                var storeKey = "chunk|" + this.id + "|" + x.toString(16) + "|" + y.toString(16);
+                const storedData = localStorage.getItem(storeKey);
+
+                if (storedData) {
+                    result = {
+                        x: x, y: y,
+                        dirty: true,
+                        saved: true,
+                        data: decodeSimpleRLE(storedData),
+                        elementCount: 0,
+                        buffer: gl.createBuffer(),
+                    }
+                } else {
+                    if (Math.abs(x) > 3 || Math.abs(y) > 3) {
+
+                        const alreadyLoading = this.loadingList.some(val => val.x == x && val.y == y);
+
+
+                        if (!alreadyLoading) {
+                            console.log("add to loading list....");
+                            this.loadingList.push({x:x, y:y});
+                            backgroundWorker.postMessage({function:"createChunk", parameters: [x, y], tag: 32});
+                        }
+                        
+
+                        return null;
+                    }
+
+                    result = this.worldFactory(x, y);
+                }
+
+                this.chunks.push(result);
+            }
+            return result;
+        }
+
+        World.prototype.setBlock = function(x, y, z, blockType) {
+            const chunkX = Math.floor(x/16);
+            const chunkY = Math.floor(y/16);
+
+            var chunk = world.findChunk(chunkX, chunkY);
+
+            const blaX = x - chunkX*16;
+            const blaY = y - chunkY*16;
+
+            const offset = posOffset(blaX, blaY, z);
+            if (chunk.data[offset] != blockType) {
+                chunk.data[offset] = blockType;
+                chunk.dirty = true;
+                chunk.saved = false;
+            }
+        }
+
+        World.prototype.save = function() {
+            this.chunks.filter(chunk => !chunk.saved).forEach(chunk => {
+                var storeKey = "chunk|" + this.id + "|" + chunk.x.toString(16) + "|" + chunk.y.toString(16);
+                localStorage.setItem(storeKey, encodeSimpleRLE(chunk.data));
+            });
+        }
+
+
+        var world = new World(0, createChunk, [0, 0.75, 1.0]);
+        //var world = new World(0, createMinimalChunk, [0, 0.75, 1.0]);
+        var nether = new World(1, createNetherChunk, [0, 0, 0]);
+        
+
+        var backgroundWorker = new Worker('worker.js');
+        backgroundWorker.onmessage = function(e) {
+            console.log("main: Message received", e.data);
+
+                e.data.result.elementCount = 0;
+                e.data.result.dirty = true;
+                e.data.result.saved = true;
+                e.data.result.buffer = gl.createBuffer();
+
+                world.chunks.push(e.data.result);
+
+//console.log(world.chunks)
+
+        }
+
+        //backgroundWorker.postMessage({function:"createChunk", parameters: [3, 3], tag: 32});
+
+
+        
+        /*
+        const texScale = 1/16;
+
+        function calcTextureOffsets(image, output) {
+            const a = Math.floor(image/16);
+            const b = image%16;
+
+            output.ax = texScale*(b  );
+            output.ay = texScale*(a  );
+
+            output.bx = texScale*(b+1);
+            output.by = texScale*(a+1);
+        }*/
+
+
+
+
+        function calcTextureOffsets(image, output) {
+            const a = (Math.floor(image / atlasPerRow)) * atlasItemSize;
+            const b = (image % atlasPerRow) * atlasItemSize;
+
+            output.ax = atlasPixel * (b + atlasBorder);
+            output.ay = atlasPixel * (a + atlasBorder);
+
+            output.bx = atlasPixel * (b + atlasBorder + 16);
+            output.by = atlasPixel * (a + atlasBorder + 16);
+        }
+        
+        function updateChunkBuffer(chunk) {
+            var meshData = [];
+            let textureOffset = {};
+
+            const leftChunk = world.findChunk(chunk.x - 1, chunk.y);
+            const rightChunk = world.findChunk(chunk.x + 1, chunk.y);
+
+            const frontChunk = world.findChunk(chunk.x, chunk.y + 1);
+            const backChunk = world.findChunk(chunk.x, chunk.y - 1);
+            
+            if (!leftChunk || !rightChunk || !frontChunk || !backChunk) return false;
+
+            for (var z=0;z<128;z++) {
+                for (var y=0;y<16;y++) {
+                    for (var x=0;x<16;x++) {
+                    
+                        const blockTypeInfo = blockTypes[chunk.data[posOffset(x,y,z)]];
+                        
+                        
+                        if (blockTypeInfo.block) {
+                            // Top
+                            if (z == 127 || chunk.data[posOffset(x,y,z+1)] == 0) {
+                                calcTextureOffsets(blockTypeInfo.image[0], textureOffset);
+                                meshData.push(
+                                    x + 0,  z+1,  -y-0, textureOffset.ax, textureOffset.ay,      0,  1,  0,
+                                    x + 1,  z+1,  -y-0, textureOffset.bx, textureOffset.ay,      0,  1,  0,
+                                    x + 1,  z+1,  -y-1, textureOffset.bx, textureOffset.by,      0,  1,  0,
+
+                                    x + 0,  z+1,  -y-0, textureOffset.ax, textureOffset.ay,      0,  1,  0,
+                                    x + 1,  z+1,  -y-1, textureOffset.bx, textureOffset.by,      0,  1,  0,
+                                    x + 0,  z+1,  -y-1, textureOffset.ax, textureOffset.by,      0,  1,  0,
+                                );
+                            }
+
+                            // Bottom
+                            if (z == 0 || chunk.data[posOffset(x,y,z-1)] == 0) {
+                                calcTextureOffsets(blockTypeInfo.image[5], textureOffset);
+                                meshData.push(
+                                    x + 0,  z+0,  -y-0, textureOffset.ax, textureOffset.ay,      0, -1,  0,
+                                    x + 1,  z+0,  -y-1, textureOffset.bx, textureOffset.by,      0, -1,  0,
+                                    x + 1,  z+0,  -y-0, textureOffset.bx, textureOffset.ay,      0, -1,  0,
+
+                                    x + 0,  z+0,  -y-0, textureOffset.ax, textureOffset.ay,      0, -1,  0,
+                                    x + 0,  z+0,  -y-1, textureOffset.ax, textureOffset.by,      0, -1,  0,
+                                    x + 1,  z+0,  -y-1, textureOffset.bx, textureOffset.by,      0, -1,  0,
+                                )
+                            }
+
+                            // Front
+                            if ((y == 15 && frontChunk.data[posOffset(x,0,z)] == 0) || (y < 15 && chunk.data[posOffset(x,y+1,z)] == 0)) {
+                                calcTextureOffsets(blockTypeInfo.image[1], textureOffset);
+                                meshData.push(
+                                    x + 0,  z+0,  -y-1, textureOffset.ax, textureOffset.by,      0,  0,  1,
+                                    x + 1,  z+1,  -y-1, textureOffset.bx, textureOffset.ay,      0,  0,  1,
+                                    x + 1,  z+0,  -y-1, textureOffset.bx, textureOffset.by,      0,  0,  1,
+
+                                    x + 0,  z+0,  -y-1, textureOffset.ax, textureOffset.by,      0,  0,  1,
+                                    x + 0,  z+1,  -y-1, textureOffset.ax, textureOffset.ay,      0,  0,  1,
+                                    x + 1,  z+1,  -y-1, textureOffset.bx, textureOffset.ay,      0,  0,  1,
+                                );
+                            }
+
+                            // Back
+                            if ((y == 0 && backChunk.data[posOffset(x,15,z)] == 0) || (y > 0 && chunk.data[posOffset(x,y-1,z)] == 0)) {
+                                calcTextureOffsets(blockTypeInfo.image[2], textureOffset);
+                                meshData.push(
+                                    x + 0,  z+0,  -y-0, textureOffset.bx, textureOffset.by,      0,  0, -1,
+                                    x + 1,  z+0,  -y-0, textureOffset.ax, textureOffset.by,      0,  0, -1,
+                                    x + 1,  z+1,  -y-0, textureOffset.ax, textureOffset.ay,      0,  0, -1,
+
+                                    x + 0,  z+0,  -y-0, textureOffset.bx, textureOffset.by,      0,  0, -1,
+                                    x + 1,  z+1,  -y-0, textureOffset.ax, textureOffset.ay,      0,  0, -1,
+                                    x + 0,  z+1,  -y-0, textureOffset.bx, textureOffset.ay,      0,  0, -1,
+                                );
+                            }
+
+                            // Left
+                            if ((x == 0 && leftChunk.data[posOffset(15,y,z)] == 0) || (x > 0 && chunk.data[posOffset(x-1,y,z)] == 0)) {
+                                calcTextureOffsets(blockTypeInfo.image[3], textureOffset);
+                                meshData.push(
+                                    x + 0,  z+0,  -y-1, textureOffset.bx, textureOffset.by,     -1,  0,  0,
+                                    x + 0,  z+0,  -y-0, textureOffset.ax, textureOffset.by,     -1,  0,  0,
+                                    x + 0,  z+1,  -y-1, textureOffset.bx, textureOffset.ay,     -1,  0,  0,
+
+                                    x + 0,  z+0,  -y-0, textureOffset.ax, textureOffset.by,     -1,  0,  0,
+                                    x + 0,  z+1,  -y-0, textureOffset.ax, textureOffset.ay,     -1,  0,  0,
+                                    x + 0,  z+1,  -y-1, textureOffset.bx, textureOffset.ay,     -1,  0,  0,
+                                );
+                            }
+
+                            // Right
+                            if ((x == 15 && rightChunk.data[posOffset(0,y,z)] == 0) || (x < 15 && chunk.data[posOffset(x+1,y,z)] == 0)) {
+                                calcTextureOffsets(blockTypeInfo.image[4], textureOffset);
+                                meshData.push(
+                                    x + 1,  z+0,  -y-1, textureOffset.ax, textureOffset.by,      1,  0,  0,
+                                    x + 1,  z+1,  -y-1, textureOffset.ax, textureOffset.ay,      1,  0,  0,
+                                    x + 1,  z+0,  -y-0, textureOffset.bx, textureOffset.by,      1,  0,  0,
+
+                                    x + 1,  z+0,  -y-0, textureOffset.bx, textureOffset.by,      1,  0,  0,
+                                    x + 1,  z+1,  -y-1, textureOffset.ax, textureOffset.ay,      1,  0,  0,
+                                    x + 1,  z+1,  -y-0, textureOffset.bx, textureOffset.ay,      1,  0,  0,
+                                );
+                            }
+                        }
+
+                    }
+                }
+            }
+
+
+
+            var buffer1Data = new Float32Array(meshData);
+
+
+            
+            gl.bindBuffer(gl.ARRAY_BUFFER, chunk.buffer);
+            gl.bufferData(gl.ARRAY_BUFFER, buffer1Data, gl.DYNAMIC_DRAW);
+
+            chunk.elementCount = buffer1Data.length / 8
+            chunk.dirty = false;
+
+            return true;
+        }
+
+
+
+        var buffer2Data = new Float32Array([
+            -0.01, -0.01,  0.01,
+             1.01, -0.01,  0.01,
+            -0.01,  1.01,  0.01,
+             1.01,  1.01,  0.01,
+            
+            -0.01, -0.01, -1.01,
+             1.01, -0.01, -1.01,
+            -0.01,  1.01, -1.01,
+             1.01,  1.01, -1.01 
+        ]);
+
+
+        var buffer3Data = new Uint8Array([
+            4,6,5,
+            5,6,7,
+            5,7,1,
+            1,7,3,
+            1,3,0,
+            0,3,2,
+            0,2,4,
+            4,2,6,
+            6,2,7,
+            7,2,3,
+            0,4,1,
+            1,4,5,
+
+            4,5 ,5,1, 1,0, 0,4, 6,7, 7,3, 3,2, 2,6, 
+            4,6, 5,7, 1,3, 0,2
+        ]);
+
+
+        blockTypes.forEach(blockType => {
+            if (!blockType.block) return;
+
+            let textureOffset = [{}, {}, {}, {}, {}, {}];
+            for (let i=0; i<6; i++) calcTextureOffsets(blockType.image[i], textureOffset[i]);
+
+            var vertexData = new Float32Array([
+                -0.05, -0.05,  0.05,    textureOffset[1].ax, textureOffset[1].by,    0, 0, 1,
+                 0.05, -0.05,  0.05,    textureOffset[1].bx, textureOffset[1].by,    0, 0, 1,
+                 0.05,  0.05,  0.05,    textureOffset[1].bx, textureOffset[1].ay,    0, 0, 1,
+                -0.05,  0.05,  0.05,    textureOffset[1].ax, textureOffset[1].ay,    0, 0, 1,
+
+                 0.05, -0.05,  0.05,    textureOffset[4].ax, textureOffset[4].by,    1, 0, 0,
+                 0.05, -0.05, -0.05,    textureOffset[4].bx, textureOffset[4].by,    1, 0, 0,
+                 0.05,  0.05, -0.05,    textureOffset[4].bx, textureOffset[4].ay,    1, 0, 0,
+                 0.05,  0.05,  0.05,    textureOffset[4].ax, textureOffset[4].ay,    1, 0, 0,
+
+                 0.05, -0.05, -0.05,    textureOffset[2].ax, textureOffset[2].by,    0, 0,-1,
+                -0.05, -0.05, -0.05,    textureOffset[2].bx, textureOffset[2].by,    0, 0,-1,
+                -0.05,  0.05, -0.05,    textureOffset[2].bx, textureOffset[2].ay,    0, 0,-1,
+                 0.05,  0.05, -0.05,    textureOffset[2].ax, textureOffset[2].ay,    0, 0,-1,
+
+                -0.05, -0.05, -0.05,    textureOffset[3].ax, textureOffset[3].by,   -1, 0, 0,
+                -0.05, -0.05,  0.05,    textureOffset[3].bx, textureOffset[3].by,   -1, 0, 0,
+                -0.05,  0.05,  0.05,    textureOffset[3].bx, textureOffset[3].ay,   -1, 0, 0,
+                -0.05,  0.05, -0.05,    textureOffset[3].ax, textureOffset[3].ay,   -1, 0, 0,
+
+                -0.05,  0.05,  0.05,    textureOffset[0].ax, textureOffset[0].by,    0, 1, 0,
+                 0.05,  0.05,  0.05,    textureOffset[0].bx, textureOffset[0].by,    0, 1, 0,
+                 0.05,  0.05, -0.05,    textureOffset[0].bx, textureOffset[0].ay,    0, 1, 0,
+                -0.05,  0.05, -0.05,    textureOffset[0].ax, textureOffset[0].ay,    0, 1, 0,
+
+                -0.05, -0.05, -0.05,    textureOffset[5].ax, textureOffset[5].by,    0,-1, 0,
+                 0.05, -0.05, -0.05,    textureOffset[5].bx, textureOffset[5].by,    0,-1, 0,
+                 0.05, -0.05,  0.05,    textureOffset[5].bx, textureOffset[5].ay,    0,-1, 0,
+                -0.05, -0.05,  0.05,    textureOffset[5].ax, textureOffset[5].ay,    0,-1, 0,
+            ]);
+
+            var indexData = new Uint8Array([
+                 0,  1,  3,    1,  2,  3,
+                 4,  5,  7,    5,  6,  7,
+                 8,  9, 11,    9, 10, 11,
+                12, 13, 15,   13, 14, 15,
+                16, 17, 19,   17, 18, 19,
+                20, 21, 23,   21, 22, 23
+            ]);
+
+            var vertexBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, vertexData, gl.STATIC_DRAW);
+
+            var indexBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+            gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indexData, gl.STATIC_DRAW);
+
+            blockType.mesh = {
+                vertexBuffer: vertexBuffer,
+                indexBuffer: indexBuffer
+            };
+        });
+
+
+        var portalBufferData = new Float32Array([
+             28.5, 58.0, -35.0, 
+             28.5, 61.0, -35.0,
+             28.5, 58.0, -37.0, 
+
+             28.5, 58.0, -37.0,
+             28.5, 61.0, -35.0,
+             28.5, 61.0, -37.0, 
+        ]);
+
+        
+
+        var portalBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, portalBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, portalBufferData, gl.STATIC_DRAW);
+
+        var buffer2 = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer2);
+        gl.bufferData(gl.ARRAY_BUFFER, buffer2Data, gl.STATIC_DRAW);
+
+        var buffer3 = gl.createBuffer();
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffer3);
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, buffer3Data, gl.STATIC_DRAW);
+
+
+
+        gl.enable(gl.CULL_FACE);
+        gl.enable(gl.DEPTH_TEST);
+
+        var time = 0.0;
+        
+
+        var topView = false;
+
+        var cameraYaw = 0;
+        var cameraPitch = 0;
+
+
+        const walkSpeed = 0.15;
+        const turnSpeed = 0.05;
+
+
+        var keys = {};
+        var newKeys = {};
+
+        
+
+        // Find start height.
+        var initialChunk = world.findChunk(0,0);
+        for (var z=127;z>0;z--) {
+            if (initialChunk.data[posOffset(0, 0, z)] != 0) break;
+
+            activePlayer.pos.z = z + 3;
+        }
+
+
+        window.onkeydown = e => {
+            const keyCode = e.key.toLowerCase();
+            if (!keys[keyCode]) newKeys[keyCode] = true;
+            keys[keyCode] = true;
+        }
+        window.onkeyup = e => keys[e.key.toLowerCase()] = false;
+
+        
+        canvas.onmousemove = e => {
+            if (e.buttons || document.pointerLockElement) {
+                cameraYaw -= e.movementX * 0.005;
+                cameraPitch = Math.max(-Math.PI/2, Math.min(Math.PI/2, cameraPitch - e.movementY * 0.005));
+            }
+        }
+
+        var clickLeft = false;
+        var clickRight = false;
+
+        canvas.onmousedown = e => {
+            
+            if (!document.pointerLockElement) {
+                canvas.requestPointerLock();
+                document.getElementById("menu").style.display = "none";
+                return;
+            }
+
+            if (e.button == 0) clickLeft = true;
+            if (e.button == 2) clickRight = true;
+        }
+
+        canvas.onwheel = e => {
+            if (e.deltaY <= -1) { activePlayer.activeItem = Math.max(0, activePlayer.activeItem - 1); setActiveItem(activePlayer.activeItem); }
+            if (e.deltaY >=  1) { activePlayer.activeItem = Math.min(7, activePlayer.activeItem + 1); setActiveItem(activePlayer.activeItem); }
+        }
+
+
+        function traceRay(startX, startY, startZ, dirX, dirY, dirZ, steps) {
+            const deltaDistX = Math.abs(1/dirX);
+            const deltaDistY = Math.abs(1/dirY);
+            const deltaDistZ = Math.abs(1/dirZ);
+
+            const deltaMapX = dirX < 0 ? -1 : 1;
+            const deltaMapY = dirY < 0 ? -1 : 1;
+            const deltaMapZ = dirZ < 0 ? -1 : 1;
+
+            var mapX = Math.floor(startX);
+            var mapY = Math.floor(startY);
+            var mapZ = Math.floor(startZ);
+
+            var sideDistX = ((dirX < 0) ? (startX - Math.floor(startX)) : (Math.floor(startX + 1.0) - startX)) * deltaDistX;
+            var sideDistY = ((dirY < 0) ? (startY - Math.floor(startY)) : (Math.floor(startY + 1.0) - startY)) * deltaDistY;
+            var sideDistZ = ((dirZ < 0) ? (startZ - Math.floor(startZ)) : (Math.floor(startZ + 1.0) - startZ)) * deltaDistZ;
+
+            var cursorX = 0;
+            var cursorY = 0;
+            var cursorZ = 0;
+
+            var prevCursorX = 0;
+            var prevCursorY = 0;
+            var prevCursorZ = 0;
+
+
+            for (var i=0; i<steps; i++) {
+                if (sideDistX <= sideDistY && sideDistX <= sideDistZ) {
+                    //if (sideDistX > lineLength) break;
+
+                    //ctx.fillStyle = "#0000ff";
+                    //circle(add(pos, mul(dirVec, sideDistX)));
+
+                    sideDistX += deltaDistX;
+                    mapX += deltaMapX;
+
+                } else if (sideDistY <= sideDistX && sideDistY <= sideDistZ) {
+                    //if (sideDistY > lineLength) break;
+
+                    //ctx.fillStyle = "#0000ff";
+                    //circle(add(pos, mul(dirVec, sideDistY)));
+
+                    sideDistY += deltaDistY;
+                    mapY += deltaMapY;
+                } else {
+                    sideDistZ += deltaDistZ;
+                    mapZ += deltaMapZ;
+                }
+                
+
+                let info = 0;
+                const chunk = world.findChunk(Math.floor(mapX / 16), Math.floor(mapY / 16));
+                if (chunk) {
+                    const chunkX = mapX - (Math.floor(mapX / 16) * 16);
+                    const chunkY = mapY - (Math.floor(mapY / 16) * 16);
+                    const chunkZ = mapZ;
+
+                    info = chunk.data[posOffset(chunkX, chunkY, chunkZ)];
+                }
+
+                if (info != 0) {
+                    cursorX = mapX;
+                    cursorY = mapY;
+                    cursorZ = mapZ;
+                    break;
+                }
+
+                prevCursorX = mapX;
+                prevCursorY = mapY;
+                prevCursorZ = mapZ;
+            }
+
+            return {
+                cursor: {
+                    x: cursorX,
+                    y: cursorY,
+                    z: cursorZ
+                },
+                prevCursor: {
+                    x: prevCursorX,
+                    y: prevCursorY,
+                    z: prevCursorZ
+                }
+            };
+        }
+
+
+        let controllerButtonsOld = {};
+
+        function mainloop() {
+
+
+            if (!document.pointerLockElement) {
+                document.getElementById("menu").style.display = "";
+            }
+
+            if (newKeys["escape"]) { 
+                //document.getElementById("menu").style.display = "";
+                //document.exitPointerLock();
+
+                //canvas.requestPointerLock();
+                //document.getElementById("menu").style.display = "none";
+            }
+
+            const walkDirX = -Math.sin(cameraYaw);
+            const walkDirY =  Math.cos(cameraYaw);
+
+            const dirX = walkDirX * Math.cos(cameraPitch);
+            const dirY = walkDirY * Math.cos(cameraPitch);
+            const dirZ = Math.sin(cameraPitch);
+
+            const sideX = -Math.cos(cameraYaw);
+            const sideY = -Math.sin(cameraYaw);
+
+            let turnRate = 0;
+            let pitchRate = 0;
+            let walkX = 0;
+            let walkY = 0;
+
+            let jump = false;
+            let shouldDig = false;
+            let shouldPlace = false;
+
+            var curWalkSpeed = walkSpeed;
+            if (keys["shift"]) curWalkSpeed *= 2.0;
+
+            if (keys["arrowleft"]) turnRate += 1;
+            if (keys["arrowright"]) turnRate -= 1;
+
+            if (keys["w"] || keys["arrowup"]) { walkX += walkDirX; walkY += walkDirY; }
+            if (keys["s"] || keys["arrowdown"]) { walkX -= walkDirX; walkY -= walkDirY; }
+
+            if (keys["a"]) { walkX += sideX; walkY += sideY; }
+            if (keys["d"]) { walkX -= sideX; walkY -= sideY; }
+        
+            if (newKeys["backspace"] || clickLeft) shouldDig = true;
+            if (clickRight) shouldPlace = true;
+
+            if (newKeys[" "]) { jump = true; }
+
+            if (keys["1"]) { activePlayer.activeItem = 0; setActiveItem(activePlayer.activeItem); }
+            if (keys["2"]) { activePlayer.activeItem = 1; setActiveItem(activePlayer.activeItem); }
+            if (keys["3"]) { activePlayer.activeItem = 2; setActiveItem(activePlayer.activeItem); }
+            if (keys["4"]) { activePlayer.activeItem = 3; setActiveItem(activePlayer.activeItem); }
+            if (keys["5"]) { activePlayer.activeItem = 4; setActiveItem(activePlayer.activeItem); }
+            if (keys["6"]) { activePlayer.activeItem = 5; setActiveItem(activePlayer.activeItem); }
+            if (keys["7"]) { activePlayer.activeItem = 6; setActiveItem(activePlayer.activeItem); }
+            if (keys["8"]) { activePlayer.activeItem = 7; setActiveItem(activePlayer.activeItem); }
+
+            if (newKeys["["]) { 
+                activePlayer.activeItem -= 1;
+                while (activePlayer.activeItem < 0) activePlayer.activeItem += 8;
+                setActiveItem(activePlayer.activeItem);
+            }
+            if (newKeys["]"]) {  
+                activePlayer.activeItem += 1;
+                while (activePlayer.activeItem >= 8) activePlayer.activeItem -= 8;
+                setActiveItem(activePlayer.activeItem);
+            }
+        
+
+
+
+            
+
+
+
+            
+            
+
+            if (newKeys["z"]) topView = !topView;
+
+            if (newKeys["i"]) {
+                var inventoryMenu = document.getElementById("inventoryMenu");
+
+                if (inventoryMenu.style.display == "none") {
+                    inventoryMenu.style.display = "";
+                    document.exitPointerLock();
+                } else {
+                    inventoryMenu.style.display = "none";
+                    canvas.requestPointerLock();
+                }
+            }
+
+            const XBOX_CONTROLLER_AXIS_LEFT_X = 0;
+            const XBOX_CONTROLLER_AXIS_LEFT_Y = 1;
+            const XBOX_CONTROLLER_AXIS_RIGHT_X = 2;
+            const XBOX_CONTROLLER_AXIS_RIGHT_Y = 3;
+
+            const XBOX_CONTROLLER_BUTTON_A = 0;
+            const XBOX_CONTROLLER_BUTTON_B = 1;
+            const XBOX_CONTROLLER_BUTTON_X = 2;
+            const XBOX_CONTROLLER_BUTTON_Y = 3;
+            const XBOX_CONTROLLER_BUTTON_LB = 4;
+            const XBOX_CONTROLLER_BUTTON_RB = 5;
+            const XBOX_CONTROLLER_BUTTON_LT = 6;
+            const XBOX_CONTROLLER_BUTTON_RT = 7;
+            const XBOX_CONTROLLER_BUTTON_VIEW = 8;
+            const XBOX_CONTROLLER_BUTTON_MENU = 9;
+            const XBOX_CONTROLLER_BUTTON_STICK_LEFT = 10;
+            const XBOX_CONTROLLER_BUTTON_STICK_RIGHT = 11;
+            const XBOX_CONTROLLER_BUTTON_UP = 12;
+            const XBOX_CONTROLLER_BUTTON_DOWN = 13;
+            const XBOX_CONTROLLER_BUTTON_LEFT = 14;
+            const XBOX_CONTROLLER_BUTTON_RIGHT = 15;
+            const XBOX_CONTROLLER_BUTTON_XBOX = 16;
+
+            //  https://github.com/360Controller/360Controller/
+
+            const gamepads = navigator.getGamepads();
+            for (let i=0; i<gamepads.length; i++) {
+                const gamepad = gamepads[i];
+                if (gamepad) {
+                    //console.log(gamepad);
+                    // Xbox One:
+                    //  axes:
+                    //    left x; right: 1
+                    //    left y; down: 1
+                    //    right x; right: 1
+                    //    right y; down: 1
+                    //
+                    //  buttons:
+                    //    A           :  0
+                    //    B           :  1
+                    //    X           :  2
+                    //    Y           :  3
+                    //    LR          :  4
+                    //    RR          :  5
+                    //    LT          :  6 (analog)
+                    //    RT          :  7 (analog)
+                    //    View/Back   :  8
+                    //    Menu/Start  :  9
+                    //    Left stick  : 10
+                    //    Right strick: 11
+                    //    Up          : 12
+                    //    Down        : 13
+                    //    Left        : 14
+                    //    Right       : 15
+                    //    XBox Button : 16
+                    //
+                    //  https://github.com/360Controller/360Controller/
+
+                    const rescaled = (val) => Math.abs(val) > 0.2 ? val : 0;
+
+                    if (gamepad.id.startsWith("Xbox One")) {
+                        
+                        walkX += -rescaled(gamepad.axes[XBOX_CONTROLLER_AXIS_LEFT_X]) * sideX;
+                        walkY += -rescaled(gamepad.axes[XBOX_CONTROLLER_AXIS_LEFT_X]) * sideY;
+                        walkX += -rescaled(gamepad.axes[XBOX_CONTROLLER_AXIS_LEFT_Y]) * walkDirX;
+                        walkY += -rescaled(gamepad.axes[XBOX_CONTROLLER_AXIS_LEFT_Y]) * walkDirY;
+                        
+                        turnRate += -rescaled(gamepad.axes[XBOX_CONTROLLER_AXIS_RIGHT_X]);
+
+
+                        pitchRate += -rescaled(gamepad.axes[XBOX_CONTROLLER_AXIS_RIGHT_Y]);
+
+                        jump = jump || (gamepad.buttons[XBOX_CONTROLLER_BUTTON_A].pressed && !controllerButtonsOld[XBOX_CONTROLLER_BUTTON_A]);
+
+                        shouldPlace = shouldPlace || (gamepad.buttons[XBOX_CONTROLLER_BUTTON_LT].pressed && !controllerButtonsOld[XBOX_CONTROLLER_BUTTON_LT]);
+                        shouldDig = shouldDig || (gamepad.buttons[XBOX_CONTROLLER_BUTTON_RT].pressed && !controllerButtonsOld[XBOX_CONTROLLER_BUTTON_RT]);
+
+                        if (gamepad.buttons[XBOX_CONTROLLER_BUTTON_LB].pressed && !controllerButtonsOld[XBOX_CONTROLLER_BUTTON_LB]) {
+                            activePlayer.activeItem -= 1;
+                            while (activePlayer.activeItem < 0) activePlayer.activeItem += 8;
+                            setActiveItem(activePlayer.activeItem);
+                        }
+
+                        if (gamepad.buttons[XBOX_CONTROLLER_BUTTON_RB].pressed && !controllerButtonsOld[XBOX_CONTROLLER_BUTTON_RB]) {
+                            activePlayer.activeItem += 1;
+                            while (activePlayer.activeItem >= 8) activePlayer.activeItem -= 8;
+                            setActiveItem(activePlayer.activeItem);
+                        }
+
+                        gamepad.buttons.forEach((button, index) => {
+                            controllerButtonsOld[index] = button.pressed;
+                        });
+                    }
+                }
+            }
+
+            if (jump) {
+                activePlayer.velocity = {x: 0, y: 0, z: 10}; 
+                activePlayer.acceleration = {x: 0, y: 0, z: -15.0};
+            }
+
+            const oldPlayerZ = activePlayer.pos.z;
+
+            activePlayer.velocity.x += activePlayer.acceleration.x * 0.016;
+            activePlayer.velocity.y += activePlayer.acceleration.y * 0.016;
+            activePlayer.velocity.z += activePlayer.acceleration.z * 0.016;
+
+            activePlayer.velocity.z = Math.max(activePlayer.velocity.z, -50); // TODO: we fall trough the world at about -60. Probably FPS related
+
+            activePlayer.pos.x += activePlayer.velocity.x * 0.016;
+            activePlayer.pos.y += activePlayer.velocity.y * 0.016;
+            activePlayer.pos.z += activePlayer.velocity.z * 0.016;
+            
+            walkDist = Math.hypot(walkX, walkY);
+            if (walkDist > 0.01) { // TODO: why is this not 1.0?????
+                walkX /= walkDist;
+                walkY /= walkDist;
+            }
+
+            cameraYaw += Math.min(1, turnRate) * turnSpeed;
+            cameraPitch += Math.min(1, pitchRate) * turnSpeed;
+            cameraPitch = Math.max(-Math.PI/2, Math.min(Math.PI/2, cameraPitch));
+
+            activePlayer.pos.x += walkX * curWalkSpeed;
+            activePlayer.pos.y += walkY * curWalkSpeed;
+
+            // collision check
+            {
+                const chunkX = Math.floor(activePlayer.pos.x/16);
+                const chunkY = Math.floor(activePlayer.pos.y/16);
+                const currentChunk = world.findChunk(chunkX, chunkY);
+                if (currentChunk) {
+                    const chunkOffsetX = Math.floor(activePlayer.pos.x - chunkX * 16);
+                    const chunkOffsetY = Math.floor(activePlayer.pos.y - chunkY * 16);
+
+                    const lowZ = Math.floor(activePlayer.pos.z);
+                    const highZ = Math.floor(activePlayer.pos.z + 1.8);
+
+                    for (var z=lowZ; z<=highZ; z++) {
+                        if (z < 0 || z >= 128) continue;
+
+                        const dataOffset = posOffset(chunkOffsetX, chunkOffsetY, z);
+                        const blockType = currentChunk.data[dataOffset];
+
+                        if (blockType != 0) {
+                            const blockBottom = z;
+                            const blockTop = z + 1;
+
+                            if (activePlayer.pos.z < blockTop) {
+                                if (oldPlayerZ + 1.8 < blockBottom) {
+                                    activePlayer.pos.z = blockBottom - 1.8;
+                                    activePlayer.velocity.z = 0;
+                                } else {
+                                    activePlayer.pos.z = blockTop;
+                                    activePlayer.velocity.z = 0;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Absolute bottom safeguard. TODO: just die and respawn here...
+            if (activePlayer.pos.z < -20) activePlayer.pos.z = -20;
+
+            const cameraX = activePlayer.pos.x;
+            const cameraY = activePlayer.pos.y;
+            const cameraZ = activePlayer.pos.z + 1.65;
+
+            
+
+
+            const rayResult = traceRay(cameraX, cameraY, cameraZ, dirX, dirY, dirZ, 20);
+
+            document.getElementById("position").innerText = "activePlayer: X: " + activePlayer.pos.x.toFixed(3) + ", Y: " + activePlayer.pos.y.toFixed(3) + ", Z:" + activePlayer.pos.z.toFixed(3);
+            document.getElementById("rotation").innerText = "Yaw: " + (cameraYaw / (Math.PI/180)).toFixed(0) + ",  Pitch: " + (cameraPitch / (Math.PI/180)).toFixed(0);
+            document.getElementById("cursor").innerText = "cursor: X: " + rayResult.cursor.x.toFixed(3) + ", Y: " + rayResult.cursor.y.toFixed(3) + ", Z:" + rayResult.cursor.z.toFixed(3);
+
+            document.getElementById("acceleration").innerText = "acceleration: X: " + activePlayer.acceleration.x.toFixed(3) + ", Y: " + activePlayer.acceleration.y.toFixed(3) + ", Z:" + activePlayer.acceleration.z.toFixed(3);
+            document.getElementById("velocity").innerText = "velocity: X: " + activePlayer.velocity.x.toFixed(3) + ", Y: " + activePlayer.velocity.y.toFixed(3) + ", Z:" + activePlayer.velocity.z.toFixed(3);
+
+            if (shouldPlace) {
+                world.setBlock(rayResult.prevCursor.x, rayResult.prevCursor.y, rayResult.prevCursor.z, activePlayer.inventory[activePlayer.activeItem]);
+            }
+
+            if (shouldDig) {
+                world.setBlock(rayResult.cursor.x, rayResult.cursor.y, rayResult.cursor.z, 0);
+            }
+
+            clickLeft = false;
+            clickRight = false;
+
+            
+
+            var projection = mat4.getProjection(canvas.width/canvas.height, 70 * (Math.PI/180), 0.01, 500);
+
+
+
+
+            var camera = mat4.multiply(mat4.getTranslate(-cameraX,-cameraZ,cameraY), mat4.multiply(mat4.getYRotation(cameraYaw), mat4.getXRotation(-cameraPitch)));
+
+            if (topView)
+                camera = mat4.multiply(mat4.getTranslate(0,-150,0), mat4.getXRotation(Math.PI * 0.5));
+
+
+
+            //gl.clearColor(0.8, 0.8, 1.0, 1.0);
+            //gl.clearColor(0, 0.75, 1.0, 1.0);
+            gl.enable(gl.STENCIL_TEST); 
+            gl.clearStencil(0);
+            gl.stencilMask(0xFF);
+            gl.clearColor(world.backgroundColor[0], world.backgroundColor[1], world.backgroundColor[2], 1.0);
+            gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+            draw(projection, camera, cameraX, cameraY, rayResult.cursor.x, rayResult.cursor.y, rayResult.cursor.z);
+            
+            
+            newKeys = {};
+        }
+
+        function draw(projectionMatrix, viewMatrix, cameraX, cameraY, cursorX, cursorY, cursorZ) {
+            // TODO (maybe): get cameraX and cameraY from viewMatrix
+
+            gl.useProgram(program);
+
+            gl.uniformMatrix4fv(program.u_projectionMatrix, false, projectionMatrix);
+            gl.uniformMatrix4fv(program.u_viewMatrix, false, viewMatrix);
+            //gl.uniformMatrix4fv(u_modelMatrix, false, rotation);
+
+
+            gl.uniform3f(program.u_backgroundColor, world.backgroundColor[0], world.backgroundColor[1], world.backgroundColor[2]);
+
+            gl.enableVertexAttribArray(program.a_position);
+            gl.enableVertexAttribArray(program.a_texCoord);
+            gl.enableVertexAttribArray(program.a_normal);
+            
+            
+
+
+            const renderDistanceBlocks = 10;
+
+            let renderedChunks = 0;
+            let renderedElements = 0;
+            for (var y=-30; y<=30; y++)
+                for (var x=-30; x<=30; x++) {
+                    
+
+                    //const angle = Math.atan2(x,y) / (Math.PI / 180);
+
+                    const x2 = x - cameraX/16;
+                    const y2 = y - cameraY/16;
+
+                    if (Math.hypot(x2,y2) > renderDistanceBlocks) continue;
+
+                    const x3 = x2 * Math.cos(-cameraYaw) - y2 * Math.sin(-cameraYaw);
+                    const y3 = y2 * Math.cos(-cameraYaw) + x2 * Math.sin(-cameraYaw);
+
+                    const angle = Math.atan2(x3,y3) / (Math.PI / 180);
+
+
+                    //if (angle < -50 || angle > 50) continue;
+
+
+                    //console.log("draw chunk: ", x, y);
+
+                    const chunk = world.findChunk(x, y);
+
+                    if (!chunk) continue;
+
+                    if (chunk.dirty) {
+                        if (!updateChunkBuffer(chunk))
+                            continue;
+                    }
+
+
+                    gl.bindBuffer(gl.ARRAY_BUFFER, chunk.buffer);
+                    gl.vertexAttribPointer(program.a_position, 3, gl.FLOAT, false, 8 * 4, 0);
+                    gl.vertexAttribPointer(program.a_texCoord, 2, gl.FLOAT, false, 8 * 4, 3 * 4);
+                    gl.vertexAttribPointer(program.a_normal, 3, gl.FLOAT, false, 8 * 4, 5 * 4);
+                    
+
+                    gl.uniformMatrix4fv(program.u_modelMatrix, false, mat4.getTranslate(x*16,0,-y*16));
+
+                    gl.drawArrays(gl.TRIANGLES, 0, chunk.elementCount);
+
+                    renderedChunks++;
+                    renderedElements+= chunk.elementCount;
+                }
+
+            document.getElementById("renderedChunks").innerText = "Rendered: " + renderedChunks + ";  Triangles: " + (renderedElements/3);
+
+            // ===[ Draw 3D cursor ]===
+            gl.enable(gl.BLEND);
+            gl.blendFunc( gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+            gl.useProgram(frustumProgram);
+
+            gl.uniformMatrix4fv(frustumProgram.u_projectionMatrix, false, projectionMatrix);
+            gl.uniformMatrix4fv(frustumProgram.u_viewMatrix, false, viewMatrix);
+            gl.uniformMatrix4fv(frustumProgram.u_modelMatrix, false, mat4.getTranslate(cursorX,cursorZ,-cursorY));
+
+            gl.bindBuffer(gl.ARRAY_BUFFER, buffer2);
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffer3);
+
+            gl.enableVertexAttribArray(frustumProgram.a_position);
+            gl.vertexAttribPointer(frustumProgram.a_position, 3, gl.FLOAT, false, 3 * 4, 0);
+
+
+            gl.uniform4f(frustumProgram.u_color, 0,0,0,1);
+            gl.drawElements(gl.LINES, 8*3, gl.UNSIGNED_BYTE, 12*3);
+            gl.uniform4f(frustumProgram.u_color, 0,0,1,0.5);
+            gl.drawElements(gl.TRIANGLES, 6*6, gl.UNSIGNED_BYTE, 0);
+
+
+
+            // ===[ Draw equiped item ]===
+            const activeToolItem = blockTypes[activePlayer.inventory[activePlayer.activeItem]];
+            if (activeToolItem && activeToolItem.mesh) {
+
+                //gl.disable(gl.BLEND);
+                //gl.disable(gl.CULL_FACE);
+
+                gl.useProgram(program);
+
+                gl.uniformMatrix4fv(program.u_projectionMatrix, false, projectionMatrix);
+                gl.uniformMatrix4fv(program.u_viewMatrix, false, mat4.getIdentity());
+                //gl.uniformMatrix4fv(program.u_modelMatrix, false, mat4.multiply(equipHandMatrix, mat4.getTranslate(0, 0, -3)));
+                gl.uniformMatrix4fv(program.u_modelMatrix, false, equipHandMatrix);
+
+                gl.enableVertexAttribArray(program.a_position);
+                gl.enableVertexAttribArray(program.a_texCoord);
+                gl.enableVertexAttribArray(program.a_normal);
+
+                gl.bindBuffer(gl.ARRAY_BUFFER, activeToolItem.mesh.vertexBuffer);
+                gl.vertexAttribPointer(program.a_position, 3, gl.FLOAT, false, 8 * 4, 0);
+                gl.vertexAttribPointer(program.a_texCoord, 2, gl.FLOAT, false, 8 * 4, 3 * 4);
+                gl.vertexAttribPointer(program.a_normal, 3, gl.FLOAT, false, 8 * 4, 5 * 4);
+
+                
+
+                gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, activeToolItem.mesh.indexBuffer);
+
+                gl.drawElements(gl.TRIANGLES, 6*6, gl.UNSIGNED_BYTE, 0);
+            }
+
+
+            time += 0.1;
+
+        }
+
+        function drawHandler() {
+            equipHandMatrix = mat4.getTranslate(0.4,-0.2,-0.3);
+            mainloop();
+            window.requestAnimationFrame(drawHandler);
+        }
+
+        window.requestAnimationFrame(drawHandler);
+
+
+        
+
+
+    </script>
+    <div id="vr-icon" style="display: none; position: absolute; right: 10px; bottom: 10px; width: 100px; height: 70px; background-image: url('cardboard-logo_2x.png'); background-position: center center; background-repeat: no-repeat;">
+
+    </div>
+    <script>
+        var equipHandMatrix = mat4.getYRotation(0.2);
+
+        function matrixFromPose(pose) {
+            return mat4.multiply(
+                mat4.fromQuaternion(pose.orientation),
+                mat4.getTranslate(pose.position[0], pose.position[1], pose.position[2]));
+        }
+
+        if (navigator.getVRDisplays) {
+            navigator.getVRDisplays().then(displays => {
+
+                if (displays.length > 0) {
+                    let display = displays[0];
+
+                    const vrIcon = document.getElementById('vr-icon');
+
+                    vrIcon.onclick = (e) => {
+                        console.log("clickerdyclick!!");
+
+
+                        display.requestPresent([{source: canvas}]).then(val => {
+                            console.log("presenting", val);
+
+
+                            var leftEye = display.getEyeParameters("left");
+                            var rightEye = display.getEyeParameters("right");
+
+                            canvas.width = Math.max(leftEye.renderWidth, rightEye.renderWidth) * 2;
+                            canvas.height = Math.max(leftEye.renderHeight, rightEye.renderHeight);
+
+
+
+                            drawHandler = () => {};
+
+                            let frameData = new VRFrameData();
+
+                            // Hold button states to detect first press
+                            let nextItemPressed = false;
+                            let prevItemPressed = false;
+                            let placePressed = false;
+                            let digPressed = false;
+
+                            let leftTriggerPressed = false;
+                            let leftGripPressed = false;
+                            let leftAPressed = false;
+                            let rightTriggerPressed = false;
+                            let rightGripPressed = false;
+                            let rightAPressed = false;
+                            //
+                            
+
+
+                            function vrDrawHandler() {
+
+                                if (!display.isPresenting) return;
+
+                                const walkDirX = -Math.sin(cameraYaw);
+                                const walkDirY =  Math.cos(cameraYaw);
+
+                                var dirX = walkDirX * Math.cos(cameraPitch);
+                                var dirY = walkDirY * Math.cos(cameraPitch);
+                                var dirZ = Math.sin(cameraPitch);
+
+                                var sideX = -Math.cos(cameraYaw);
+                                var sideY = -Math.sin(cameraYaw);
+
+
+                                let turnRate = 0;
+                                let walkX = 0;
+                                let walkY = 0;
+
+                                let jump = false;
+                                let shouldDig = false;
+                                let shouldPlace = false;
+
+                                // Left controller:
+                                // X: Crouch
+                                // Y: Toggle 2D/3D
+                                // Trigger: Next item
+                                // Grip: Prev item
+                                // Thumbstick: Move
+                                // Press Thumbstick: Nothing
+
+                                // Right controller:
+                                // A: jump
+                                // B: show inventory
+                                // Trigger: dig/use
+                                // Grip: Place block
+                                // Thumbstick: Rotate
+                                // Press Thumbstick: throw item
+
+
+                                // Press Thumbstick: 0
+                                // Trigger: 1
+                                // Grip: 2
+                                // A or X: 3
+                                // B or Y: 4
+
+
+                                // gamepad.pose : GamepadPose
+                                //   hasOrientation: boolean
+                                //   hasPosition: boolean
+                                //   orientation: Float32Array(4)
+                                //   position: Float32Array(3)
+
+                                const OCULUS_TOUCH_ID_LEFT = "Oculus Touch (Left)";
+                                const OCULUS_TOUCH_ID_RIGHT = "Oculus Touch (Right)";
+
+                                const OCULUS_TOUCH_AXIS_X = 0;
+                                const OCULUS_TOUCH_AXIS_Y = 1;
+
+                                const OCULUS_TOUCH_BUTTON_STICK = 0;
+                                const OCULUS_TOUCH_BUTTON_TRIGGER = 1;
+                                const OCULUS_TOUCH_BUTTON_GRIP = 2
+                                const OCULUS_TOUCH_BUTTON_A_X = 3;
+                                const OCULUS_TOUCH_BUTTON_B_Y = 4;
+
+
+                                const gamepads = navigator.getGamepads();
+                                for (let i=0; i<gamepads.length; i++) {
+                                    const gamepad = gamepads[i];
+                                    if (gamepad) {
+                                        //console.log(i, gamepad);
+
+                                        if (gamepad.id == OCULUS_TOUCH_ID_LEFT) {
+                                            walkX += -gamepad.axes[OCULUS_TOUCH_AXIS_Y] * walkDirX;
+                                            walkY += -gamepad.axes[OCULUS_TOUCH_AXIS_Y] * walkDirY;
+
+                                            walkX += -gamepad.axes[OCULUS_TOUCH_AXIS_X] * sideX;
+                                            walkY += -gamepad.axes[OCULUS_TOUCH_AXIS_X] * sideY;
+
+                                            if (gamepad.buttons[OCULUS_TOUCH_BUTTON_TRIGGER].pressed && !leftTriggerPressed) {
+                                                activePlayer.activeItem += 1;
+                                                while (activePlayer.activeItem >= 8) activePlayer.activeItem -= 8;
+                                                setActiveItem(activePlayer.activeItem);
+                                            }
+
+                                            if (gamepad.buttons[OCULUS_TOUCH_BUTTON_GRIP].pressed && !leftGripPressed) {
+                                                activePlayer.activeItem -= 1;
+                                                while (activePlayer.activeItem < 0) activePlayer.activeItem += 8;
+                                                setActiveItem(activePlayer.activeItem);
+                                            }
+                                            
+                                            //if (gamepad.buttons[OCULUS_TOUCH_BUTTON_A_X].pressed) cameraZ -= walkSpeed;
+
+
+                                            leftTriggerPressed = gamepad.buttons[OCULUS_TOUCH_BUTTON_TRIGGER].pressed;
+                                            leftGripPressed = gamepad.buttons[OCULUS_TOUCH_BUTTON_GRIP].pressed;
+                                            leftAPressed = gamepad.buttons[OCULUS_TOUCH_BUTTON_A_X].pressed;
+                                        }
+
+                                        if (gamepad.id == OCULUS_TOUCH_ID_RIGHT) {
+                                            turnRate += -gamepad.axes[OCULUS_TOUCH_AXIS_X];
+
+                                            if (gamepad.buttons[OCULUS_TOUCH_BUTTON_TRIGGER].pressed && !rightTriggerPressed) shouldDig = true;
+                                            if (gamepad.buttons[OCULUS_TOUCH_BUTTON_GRIP].pressed && !rightGripPressed) shouldPlace = true;
+                                            if (gamepad.buttons[OCULUS_TOUCH_BUTTON_A_X].pressed && !rightAPressed) jump = true;
+
+                                            //if (gamepad.buttons[OCULUS_TOUCH_BUTTON_A_X].pressed) cameraZ += walkSpeed;
+                                            if (gamepad.buttons[OCULUS_TOUCH_BUTTON_B_Y].pressed) display.exitPresent();
+
+                                            rightTriggerPressed = gamepad.buttons[OCULUS_TOUCH_BUTTON_TRIGGER].pressed;
+                                            rightGripPressed = gamepad.buttons[OCULUS_TOUCH_BUTTON_GRIP].pressed;
+                                            rightAPressed = gamepad.buttons[OCULUS_TOUCH_BUTTON_A_X].pressed;
+
+                                            equipHandMatrix = matrixFromPose(gamepad.pose);
+                                        }
+                                    }
+                                };
+
+                                if (jump) {
+                                    activePlayer.velocity = {x: 0, y: 0, z: 10}; 
+                                    activePlayer.acceleration = {x: 0, y: 0, z: -15.0};
+                                }
+
+                                const oldPlayerZ = activePlayer.pos.z;
+
+                                activePlayer.velocity.x += activePlayer.acceleration.x * 0.016;
+                                activePlayer.velocity.y += activePlayer.acceleration.y * 0.016;
+                                activePlayer.velocity.z += activePlayer.acceleration.z * 0.016;
+
+                                activePlayer.velocity.z = Math.max(activePlayer.velocity.z, -50); // TODO: we fall trough the world at about -60. Probably FPS related
+
+                                activePlayer.pos.x += activePlayer.velocity.x * 0.016;
+                                activePlayer.pos.y += activePlayer.velocity.y * 0.016;
+                                activePlayer.pos.z += activePlayer.velocity.z * 0.016;
+
+                                walkLen = Math.hypot(walkX, walkY);
+                                if (walkLen > 1.0) {
+                                    walkX /= walkLen;
+                                    walkY /= walkLen;
+                                }
+
+
+                                cameraYaw += turnRate * turnSpeed;
+
+                                activePlayer.pos.x += walkX * walkSpeed;
+                                activePlayer.pos.y += walkY * walkSpeed;
+
+                                // collision check
+                                {
+                                    const chunkX = Math.floor(activePlayer.pos.x/16);
+                                    const chunkY = Math.floor(activePlayer.pos.y/16);
+                                    const currentChunk = world.findChunk(chunkX, chunkY);
+                                    if (currentChunk) {
+                                        const chunkOffsetX = Math.floor(activePlayer.pos.x - chunkX * 16);
+                                        const chunkOffsetY = Math.floor(activePlayer.pos.y - chunkY * 16);
+
+                                        const lowZ = Math.floor(activePlayer.pos.z);
+                                        const highZ = Math.floor(activePlayer.pos.z + 1.8);
+
+                                        for (var z=lowZ; z<=highZ; z++) {
+                                            if (z < 0 || z >= 128) continue;
+
+                                            const dataOffset = posOffset(chunkOffsetX, chunkOffsetY, z);
+                                            const blockType = currentChunk.data[dataOffset];
+
+                                            if (blockType != 0) {
+                                                const blockBottom = z;
+                                                const blockTop = z + 1;
+
+                                                if (activePlayer.pos.z < blockTop) {
+                                                    if (oldPlayerZ + 1.8 < blockBottom) {
+                                                        activePlayer.pos.z = blockBottom - 1.8;
+                                                        activePlayer.velocity.z = 0;
+                                                    } else {
+                                                        activePlayer.pos.z = blockTop;
+                                                        activePlayer.velocity.z = 0;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                if (activePlayer.pos.z < -20) activePlayer.pos.z = -20;
+
+                                const cameraX = activePlayer.pos.x;
+                                const cameraY = activePlayer.pos.y;
+                                const cameraZ = activePlayer.pos.z + 1.65;
+
+
+                                
+
+                                var cameraInverse = mat4.multiply(mat4.getTranslate(-cameraX,-cameraZ,cameraY), mat4.getYRotation(cameraYaw));
+                                
+                                var camera = mat4.multiply(mat4.getYRotation(-cameraYaw), mat4.getTranslate(cameraX,cameraZ,-cameraY));
+
+                                var worldEquipHandMatrix = mat4.multiply(equipHandMatrix, camera);
+
+                                
+                                
+
+                                const handPosX =  worldEquipHandMatrix[12];
+                                const handPosY = -worldEquipHandMatrix[14];
+                                const handPosZ =  worldEquipHandMatrix[13];
+
+                                const handDirX = -worldEquipHandMatrix[ 8];
+                                const handDirY =  worldEquipHandMatrix[10];
+                                const handDirZ = -worldEquipHandMatrix[ 9];
+
+                                const rayResult = traceRay(handPosX, handPosY, handPosZ, handDirX, handDirY, handDirZ, 80);
+                                
+
+                                if (shouldPlace) {
+                                    world.setBlock(rayResult.prevCursor.x, rayResult.prevCursor.y, rayResult.prevCursor.z, activePlayer.inventory[activePlayer.activeItem]);
+                                }
+
+                                if (shouldDig) {
+                                    world.setBlock(rayResult.cursor.x, rayResult.cursor.y, rayResult.cursor.z, 0);
+                                }
+
+
+
+                                gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+                                display.getFrameData(frameData);
+
+                                var originalEquipHandMatrix = equipHandMatrix;
+
+                                gl.viewport(0, 0, canvas.width/2, canvas.height);
+                                equipHandMatrix = mat4.multiply(originalEquipHandMatrix, frameData.leftViewMatrix);
+                                draw(frameData.leftProjectionMatrix, mat4.multiply(cameraInverse, frameData.leftViewMatrix), cameraX, cameraY, rayResult.cursor.x, rayResult.cursor.y, rayResult.cursor.z);
+
+                                gl.viewport(canvas.width/2, 0, canvas.width/2, canvas.height);
+                                equipHandMatrix = mat4.multiply(originalEquipHandMatrix, frameData.rightViewMatrix);
+                                draw(frameData.rightProjectionMatrix, mat4.multiply(cameraInverse, frameData.rightViewMatrix), cameraX, cameraY, rayResult.cursor.x, rayResult.cursor.y, rayResult.cursor.z);
+
+                                display.submitFrame();
+
+                                display.requestAnimationFrame(vrDrawHandler);
+                            }
+
+                            display.requestAnimationFrame(vrDrawHandler);
+                        })
+
+                    };
+
+                    vrIcon.style.display = "";
+                    console.log("VR Headset found:", display.displayName);
+                }
+            });
+        }
+    </script>
+</body>
+</html>
