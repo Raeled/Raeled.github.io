@@ -695,6 +695,7 @@
         let activePlayer = {
             name: "Player",
             pos: {x: 0, y: 0, z: 0},
+            rotation: {pitch: 0, yaw: 0},
             acceleration: { x: 0, y: 0, z: -15.0},
             velocity: { x: 0, y: 0, z: 0},
             standing: false,
@@ -728,9 +729,6 @@
 
         
         const perlin = new Perlin();
-
-        console.log(perlin.get(0.5,0.5, 0.5));
-
 
         const posOffset = (x,y,z) => z * 256 + y * 16 + x;
 
@@ -911,6 +909,11 @@
             this.backgroundColor = backgroundColor;
             this.loadingList = [{x:0, y:0}];
         };
+        World.prototype.tryFindChunk = function(x, y) {
+            var result = this.chunks.find(chunk => chunk.x == x && chunk.y == y);
+            return result;
+        }
+
         World.prototype.findChunk = function(x, y) {
             var result = this.chunks.find(chunk => chunk.x == x && chunk.y == y);
 
@@ -941,7 +944,6 @@
 
 
                         if (!alreadyLoading) {
-                            console.log("add to loading list....");
                             this.loadingList.push({x:x, y:y});
                             backgroundWorker.postMessage({function:"createChunk", parameters: [x, y], tag: 32});
                         }
@@ -972,6 +974,26 @@
                 chunk.data[offset] = blockType;
                 chunk.dirty = true;
                 chunk.saved = false;
+
+                if (blaX == 0) {
+                    const leftChunk = world.tryFindChunk(chunkX-1, chunkY);
+                    if (leftChunk) leftChunk.dirty = true;
+                }
+
+                if (blaX == 15) {
+                    const rightChunk = world.tryFindChunk(chunkX+1, chunkY);
+                    if (rightChunk) rightChunk.dirty = true;
+                }
+                
+                if (blaY == 0) {
+                    const backChunk = world.tryFindChunk(chunkX, chunkY-1);
+                    if (backChunk) backChunk.dirty = true;
+                }
+
+                if (blaY == 15) {
+                    const frontChunk = world.tryFindChunk(chunkX, chunkY+1);
+                    if (frontChunk) frontChunk.dirty = true;
+                }
             }
         }
 
@@ -990,21 +1012,13 @@
 
         var backgroundWorker = new Worker('worker.js');
         backgroundWorker.onmessage = function(e) {
-            console.log("main: Message received", e.data);
+            e.data.result.elementCount = 0;
+            e.data.result.dirty = true;
+            e.data.result.saved = true;
+            e.data.result.buffer = gl.createBuffer();
 
-                e.data.result.elementCount = 0;
-                e.data.result.dirty = true;
-                e.data.result.saved = true;
-                e.data.result.buffer = gl.createBuffer();
-
-                world.chunks.push(e.data.result);
-
-//console.log(world.chunks)
-
+            world.chunks.push(e.data.result);
         }
-
-        //backgroundWorker.postMessage({function:"createChunk", parameters: [3, 3], tag: 32});
-
 
         
         /*
@@ -1284,13 +1298,15 @@
         gl.enable(gl.CULL_FACE);
         gl.enable(gl.DEPTH_TEST);
 
+
+        var renderDistance = 10;
+        var frustumCulling = false;
+
         var time = 0.0;
         
 
         var topView = false;
 
-        var cameraYaw = 0;
-        var cameraPitch = 0;
 
 
         const walkSpeed = 0.15;
@@ -1321,8 +1337,8 @@
         
         canvas.onmousemove = e => {
             if (e.buttons || document.pointerLockElement) {
-                cameraYaw -= e.movementX * 0.005;
-                cameraPitch = Math.max(-Math.PI/2, Math.min(Math.PI/2, cameraPitch - e.movementY * 0.005));
+                activePlayer.rotation.yaw -= e.movementX * 0.005;
+                activePlayer.rotation.pitch = Math.max(-Math.PI/2, Math.min(Math.PI/2, activePlayer.rotation.pitch - e.movementY * 0.005));
             }
         }
 
@@ -1433,11 +1449,54 @@
             };
         }
 
+        const XBOX_CONTROLLER_AXIS_LEFT_X = 0;
+        const XBOX_CONTROLLER_AXIS_LEFT_Y = 1;
+        const XBOX_CONTROLLER_AXIS_RIGHT_X = 2;
+        const XBOX_CONTROLLER_AXIS_RIGHT_Y = 3;
 
-        let controllerButtonsOld = {};
+        const XBOX_CONTROLLER_BUTTON_A = 0;
+        const XBOX_CONTROLLER_BUTTON_B = 1;
+        const XBOX_CONTROLLER_BUTTON_X = 2;
+        const XBOX_CONTROLLER_BUTTON_Y = 3;
+        const XBOX_CONTROLLER_BUTTON_LB = 4;
+        const XBOX_CONTROLLER_BUTTON_RB = 5;
+        const XBOX_CONTROLLER_BUTTON_LT = 6;
+        const XBOX_CONTROLLER_BUTTON_RT = 7;
+        const XBOX_CONTROLLER_BUTTON_VIEW = 8;
+        const XBOX_CONTROLLER_BUTTON_MENU = 9;
+        const XBOX_CONTROLLER_BUTTON_STICK_LEFT = 10;
+        const XBOX_CONTROLLER_BUTTON_STICK_RIGHT = 11;
+        const XBOX_CONTROLLER_BUTTON_UP = 12;
+        const XBOX_CONTROLLER_BUTTON_DOWN = 13;
+        const XBOX_CONTROLLER_BUTTON_LEFT = 14;
+        const XBOX_CONTROLLER_BUTTON_RIGHT = 15;
+        const XBOX_CONTROLLER_BUTTON_XBOX = 16;
+
+        const OCULUS_TOUCH_ID_LEFT = "Oculus Touch (Left)";
+        const OCULUS_TOUCH_ID_RIGHT = "Oculus Touch (Right)";
+
+        const OCULUS_TOUCH_AXIS_X = 0;
+        const OCULUS_TOUCH_AXIS_Y = 1;
+
+        const OCULUS_TOUCH_BUTTON_STICK = 0;
+        const OCULUS_TOUCH_BUTTON_TRIGGER = 1;
+        const OCULUS_TOUCH_BUTTON_GRIP = 2
+        const OCULUS_TOUCH_BUTTON_A_X = 3;
+        const OCULUS_TOUCH_BUTTON_B_Y = 4;
+
+
+        let lastVal = Date.now();
+        function getDeltaTime() {
+	        const newVal = Date.now();
+            const result = newVal - lastVal;
+            lastVal = newVal;
+            return result / 1000;
+        }
+
+        let controllersButtonsOld = [];
 
         function mainloop() {
-
+            const delta = Math.min(0.1, getDeltaTime());
 
             if (!document.pointerLockElement) {
                 document.getElementById("menu").style.display = "";
@@ -1451,15 +1510,15 @@
                 //document.getElementById("menu").style.display = "none";
             }
 
-            const walkDirX = -Math.sin(cameraYaw);
-            const walkDirY =  Math.cos(cameraYaw);
+            const walkDirX = -Math.sin(activePlayer.rotation.yaw);
+            const walkDirY =  Math.cos(activePlayer.rotation.yaw);
 
-            const dirX = walkDirX * Math.cos(cameraPitch);
-            const dirY = walkDirY * Math.cos(cameraPitch);
-            const dirZ = Math.sin(cameraPitch);
+            const dirX = walkDirX * Math.cos(activePlayer.rotation.pitch);
+            const dirY = walkDirY * Math.cos(activePlayer.rotation.pitch);
+            const dirZ = Math.sin(activePlayer.rotation.pitch);
 
-            const sideX = -Math.cos(cameraYaw);
-            const sideY = -Math.sin(cameraYaw);
+            const sideX = -Math.cos(activePlayer.rotation.yaw);
+            const sideY = -Math.sin(activePlayer.rotation.yaw);
 
             let turnRate = 0;
             let pitchRate = 0;
@@ -1531,28 +1590,7 @@
                 }
             }
 
-            const XBOX_CONTROLLER_AXIS_LEFT_X = 0;
-            const XBOX_CONTROLLER_AXIS_LEFT_Y = 1;
-            const XBOX_CONTROLLER_AXIS_RIGHT_X = 2;
-            const XBOX_CONTROLLER_AXIS_RIGHT_Y = 3;
 
-            const XBOX_CONTROLLER_BUTTON_A = 0;
-            const XBOX_CONTROLLER_BUTTON_B = 1;
-            const XBOX_CONTROLLER_BUTTON_X = 2;
-            const XBOX_CONTROLLER_BUTTON_Y = 3;
-            const XBOX_CONTROLLER_BUTTON_LB = 4;
-            const XBOX_CONTROLLER_BUTTON_RB = 5;
-            const XBOX_CONTROLLER_BUTTON_LT = 6;
-            const XBOX_CONTROLLER_BUTTON_RT = 7;
-            const XBOX_CONTROLLER_BUTTON_VIEW = 8;
-            const XBOX_CONTROLLER_BUTTON_MENU = 9;
-            const XBOX_CONTROLLER_BUTTON_STICK_LEFT = 10;
-            const XBOX_CONTROLLER_BUTTON_STICK_RIGHT = 11;
-            const XBOX_CONTROLLER_BUTTON_UP = 12;
-            const XBOX_CONTROLLER_BUTTON_DOWN = 13;
-            const XBOX_CONTROLLER_BUTTON_LEFT = 14;
-            const XBOX_CONTROLLER_BUTTON_RIGHT = 15;
-            const XBOX_CONTROLLER_BUTTON_XBOX = 16;
 
             //  https://github.com/360Controller/360Controller/
 
@@ -1560,6 +1598,10 @@
             for (let i=0; i<gamepads.length; i++) {
                 const gamepad = gamepads[i];
                 if (gamepad) {
+                    if (!controllersButtonsOld[gamepad.index])
+                        controllersButtonsOld[gamepad.index] = {};
+                    let controllerButtonsOld = controllersButtonsOld[gamepad.index];
+
                     //console.log(gamepad);
                     // Xbox One:
                     //  axes:
@@ -1588,42 +1630,41 @@
                     //    XBox Button : 16
                     //
                     //  https://github.com/360Controller/360Controller/
+                    //  ^ is this one even needed????
 
                     const rescaled = (val) => Math.abs(val) > 0.2 ? val : 0;
+                    const isNewPressed = (button) => gamepad.buttons[button].pressed && !controllerButtonsOld[button];
 
                     if (gamepad.id.startsWith("Xbox One")) {
-                        
                         walkX += -rescaled(gamepad.axes[XBOX_CONTROLLER_AXIS_LEFT_X]) * sideX;
                         walkY += -rescaled(gamepad.axes[XBOX_CONTROLLER_AXIS_LEFT_X]) * sideY;
                         walkX += -rescaled(gamepad.axes[XBOX_CONTROLLER_AXIS_LEFT_Y]) * walkDirX;
                         walkY += -rescaled(gamepad.axes[XBOX_CONTROLLER_AXIS_LEFT_Y]) * walkDirY;
                         
                         turnRate += -rescaled(gamepad.axes[XBOX_CONTROLLER_AXIS_RIGHT_X]);
-
-
                         pitchRate += -rescaled(gamepad.axes[XBOX_CONTROLLER_AXIS_RIGHT_Y]);
 
-                        jump = jump || (gamepad.buttons[XBOX_CONTROLLER_BUTTON_A].pressed && !controllerButtonsOld[XBOX_CONTROLLER_BUTTON_A]);
+                        jump = jump || isNewPressed(XBOX_CONTROLLER_BUTTON_A);
 
-                        shouldPlace = shouldPlace || (gamepad.buttons[XBOX_CONTROLLER_BUTTON_LT].pressed && !controllerButtonsOld[XBOX_CONTROLLER_BUTTON_LT]);
-                        shouldDig = shouldDig || (gamepad.buttons[XBOX_CONTROLLER_BUTTON_RT].pressed && !controllerButtonsOld[XBOX_CONTROLLER_BUTTON_RT]);
+                        shouldPlace = shouldPlace || isNewPressed(XBOX_CONTROLLER_BUTTON_LT);
+                        shouldDig = shouldDig || isNewPressed(XBOX_CONTROLLER_BUTTON_RT);
 
-                        if (gamepad.buttons[XBOX_CONTROLLER_BUTTON_LB].pressed && !controllerButtonsOld[XBOX_CONTROLLER_BUTTON_LB]) {
+                        if (isNewPressed(XBOX_CONTROLLER_BUTTON_LB)) {
                             activePlayer.activeItem -= 1;
                             while (activePlayer.activeItem < 0) activePlayer.activeItem += 8;
                             setActiveItem(activePlayer.activeItem);
                         }
 
-                        if (gamepad.buttons[XBOX_CONTROLLER_BUTTON_RB].pressed && !controllerButtonsOld[XBOX_CONTROLLER_BUTTON_RB]) {
+                        if (isNewPressed(XBOX_CONTROLLER_BUTTON_RB)) {
                             activePlayer.activeItem += 1;
                             while (activePlayer.activeItem >= 8) activePlayer.activeItem -= 8;
                             setActiveItem(activePlayer.activeItem);
-                        }
-
-                        gamepad.buttons.forEach((button, index) => {
-                            controllerButtonsOld[index] = button.pressed;
-                        });
+                        }                        
                     }
+
+                    gamepad.buttons.forEach((button, index) => {
+                        controllerButtonsOld[index] = button.pressed;
+                    });
                 }
             }
 
@@ -1632,17 +1673,18 @@
                 activePlayer.acceleration = {x: 0, y: 0, z: -15.0};
             }
 
+
             const oldPlayerZ = activePlayer.pos.z;
 
-            activePlayer.velocity.x += activePlayer.acceleration.x * 0.016;
-            activePlayer.velocity.y += activePlayer.acceleration.y * 0.016;
-            activePlayer.velocity.z += activePlayer.acceleration.z * 0.016;
+            activePlayer.velocity.x += activePlayer.acceleration.x * delta;
+            activePlayer.velocity.y += activePlayer.acceleration.y * delta;
+            activePlayer.velocity.z += activePlayer.acceleration.z * delta;
 
             activePlayer.velocity.z = Math.max(activePlayer.velocity.z, -50); // TODO: we fall trough the world at about -60. Probably FPS related
 
-            activePlayer.pos.x += activePlayer.velocity.x * 0.016;
-            activePlayer.pos.y += activePlayer.velocity.y * 0.016;
-            activePlayer.pos.z += activePlayer.velocity.z * 0.016;
+            activePlayer.pos.x += activePlayer.velocity.x * delta;
+            activePlayer.pos.y += activePlayer.velocity.y * delta;
+            activePlayer.pos.z += activePlayer.velocity.z * delta;
             
             walkDist = Math.hypot(walkX, walkY);
             if (walkDist > 0.01) { // TODO: why is this not 1.0?????
@@ -1650,9 +1692,9 @@
                 walkY /= walkDist;
             }
 
-            cameraYaw += Math.min(1, turnRate) * turnSpeed;
-            cameraPitch += Math.min(1, pitchRate) * turnSpeed;
-            cameraPitch = Math.max(-Math.PI/2, Math.min(Math.PI/2, cameraPitch));
+            activePlayer.rotation.yaw += Math.min(1, turnRate) * turnSpeed;
+            activePlayer.rotation.pitch += Math.min(1, pitchRate) * turnSpeed;
+            activePlayer.rotation.pitch = Math.max(-Math.PI/2, Math.min(Math.PI/2, activePlayer.rotation.pitch));
 
             activePlayer.pos.x += walkX * curWalkSpeed;
             activePlayer.pos.y += walkY * curWalkSpeed;
@@ -1706,7 +1748,7 @@
             const rayResult = traceRay(cameraX, cameraY, cameraZ, dirX, dirY, dirZ, 20);
 
             document.getElementById("position").innerText = "activePlayer: X: " + activePlayer.pos.x.toFixed(3) + ", Y: " + activePlayer.pos.y.toFixed(3) + ", Z:" + activePlayer.pos.z.toFixed(3);
-            document.getElementById("rotation").innerText = "Yaw: " + (cameraYaw / (Math.PI/180)).toFixed(0) + ",  Pitch: " + (cameraPitch / (Math.PI/180)).toFixed(0);
+            document.getElementById("rotation").innerText = "Yaw: " + (activePlayer.rotation.yaw / (Math.PI/180)).toFixed(0) + ",  Pitch: " + (activePlayer.rotation.pitch / (Math.PI/180)).toFixed(0);
             document.getElementById("cursor").innerText = "cursor: X: " + rayResult.cursor.x.toFixed(3) + ", Y: " + rayResult.cursor.y.toFixed(3) + ", Z:" + rayResult.cursor.z.toFixed(3);
 
             document.getElementById("acceleration").innerText = "acceleration: X: " + activePlayer.acceleration.x.toFixed(3) + ", Y: " + activePlayer.acceleration.y.toFixed(3) + ", Z:" + activePlayer.acceleration.z.toFixed(3);
@@ -1730,7 +1772,7 @@
 
 
 
-            var camera = mat4.multiply(mat4.getTranslate(-cameraX,-cameraZ,cameraY), mat4.multiply(mat4.getYRotation(cameraYaw), mat4.getXRotation(-cameraPitch)));
+            var camera = mat4.multiply(mat4.getTranslate(-cameraX,-cameraZ,cameraY), mat4.multiply(mat4.getYRotation(activePlayer.rotation.yaw), mat4.getXRotation(-activePlayer.rotation.pitch)));
 
             if (topView)
                 camera = mat4.multiply(mat4.getTranslate(0,-150,0), mat4.getXRotation(Math.PI * 0.5));
@@ -1751,10 +1793,17 @@
             newKeys = {};
         }
 
+
         function draw(projectionMatrix, viewMatrix, cameraX, cameraY, cursorX, cursorY, cursorZ) {
             // TODO (maybe): get cameraX and cameraY from viewMatrix
 
+            let chunksRegenerated = 0;
+
             gl.useProgram(program);
+
+            gl.useProgram(program); 
+            gl.uniform1f(program.u_fogStart, (renderDistance-4)*16); 
+            gl.uniform1f(program.u_fogEnd, 4*16);
 
             gl.uniformMatrix4fv(program.u_projectionMatrix, false, projectionMatrix);
             gl.uniformMatrix4fv(program.u_viewMatrix, false, viewMatrix);
@@ -1770,12 +1819,12 @@
             
 
 
-            const renderDistanceBlocks = 10;
+            const renderDistanceBlocks = renderDistance + 2;
 
             let renderedChunks = 0;
             let renderedElements = 0;
-            for (var y=-30; y<=30; y++)
-                for (var x=-30; x<=30; x++) {
+            for (var y=-renderDistanceBlocks; y<=renderDistanceBlocks; y++)
+                for (var x=-renderDistanceBlocks; x<=renderDistanceBlocks; x++) {
                     
 
                     //const angle = Math.atan2(x,y) / (Math.PI / 180);
@@ -1783,15 +1832,15 @@
                     const x2 = x - cameraX/16;
                     const y2 = y - cameraY/16;
 
-                    if (Math.hypot(x2,y2) > renderDistanceBlocks) continue;
+                    if (Math.hypot(x2,y2) > renderDistance) continue;
 
-                    const x3 = x2 * Math.cos(-cameraYaw) - y2 * Math.sin(-cameraYaw);
-                    const y3 = y2 * Math.cos(-cameraYaw) + x2 * Math.sin(-cameraYaw);
+                    const x3 = x2 * Math.cos(-activePlayer.rotation.yaw) - y2 * Math.sin(-activePlayer.rotation.yaw);
+                    const y3 = y2 * Math.cos(-activePlayer.rotation.yaw) + x2 * Math.sin(-activePlayer.rotation.yaw);
 
                     const angle = Math.atan2(x3,y3) / (Math.PI / 180);
 
 
-                    //if (angle < -50 || angle > 50) continue;
+                    if (frustumCulling && (angle < -50 || angle > 50)) continue;
 
 
                     //console.log("draw chunk: ", x, y);
@@ -1801,6 +1850,10 @@
                     if (!chunk) continue;
 
                     if (chunk.dirty) {
+
+                        if (chunksRegenerated > 20) continue;
+
+                        chunksRegenerated++;
                         if (!updateChunkBuffer(chunk))
                             continue;
                     }
@@ -1820,7 +1873,7 @@
                     renderedElements+= chunk.elementCount;
                 }
 
-            document.getElementById("renderedChunks").innerText = "Rendered: " + renderedChunks + ";  Triangles: " + (renderedElements/3);
+            document.getElementById("renderedChunks").innerText = "Rendered chunks: " + renderedChunks + ";  Triangles: " + (renderedElements/3);
 
             // ===[ Draw 3D cursor ]===
             gl.enable(gl.BLEND);
@@ -1915,12 +1968,7 @@
                     const vrIcon = document.getElementById('vr-icon');
 
                     vrIcon.onclick = (e) => {
-                        console.log("clickerdyclick!!");
-
-
                         display.requestPresent([{source: canvas}]).then(val => {
-                            console.log("presenting", val);
-
 
                             var leftEye = display.getEyeParameters("left");
                             var rightEye = display.getEyeParameters("right");
@@ -1940,29 +1988,22 @@
                             let placePressed = false;
                             let digPressed = false;
 
-                            let leftTriggerPressed = false;
-                            let leftGripPressed = false;
-                            let leftAPressed = false;
-                            let rightTriggerPressed = false;
-                            let rightGripPressed = false;
-                            let rightAPressed = false;
-                            //
-                            
 
 
                             function vrDrawHandler() {
-
                                 if (!display.isPresenting) return;
 
-                                const walkDirX = -Math.sin(cameraYaw);
-                                const walkDirY =  Math.cos(cameraYaw);
+                                const delta = Math.min(0.1, getDeltaTime());
 
-                                var dirX = walkDirX * Math.cos(cameraPitch);
-                                var dirY = walkDirY * Math.cos(cameraPitch);
-                                var dirZ = Math.sin(cameraPitch);
+                                const walkDirX = -Math.sin(activePlayer.rotation.yaw);
+                                const walkDirY =  Math.cos(activePlayer.rotation.yaw);
 
-                                var sideX = -Math.cos(cameraYaw);
-                                var sideY = -Math.sin(cameraYaw);
+                                var dirX = walkDirX * Math.cos(activePlayer.rotation.pitch);
+                                var dirY = walkDirY * Math.cos(activePlayer.rotation.pitch);
+                                var dirZ = Math.sin(activePlayer.rotation.pitch);
+
+                                var sideX = -Math.cos(activePlayer.rotation.yaw);
+                                var sideY = -Math.sin(activePlayer.rotation.yaw);
 
 
                                 let turnRate = 0;
@@ -1990,37 +2031,19 @@
                                 // Press Thumbstick: throw item
 
 
-                                // Press Thumbstick: 0
-                                // Trigger: 1
-                                // Grip: 2
-                                // A or X: 3
-                                // B or Y: 4
 
 
-                                // gamepad.pose : GamepadPose
-                                //   hasOrientation: boolean
-                                //   hasPosition: boolean
-                                //   orientation: Float32Array(4)
-                                //   position: Float32Array(3)
-
-                                const OCULUS_TOUCH_ID_LEFT = "Oculus Touch (Left)";
-                                const OCULUS_TOUCH_ID_RIGHT = "Oculus Touch (Right)";
-
-                                const OCULUS_TOUCH_AXIS_X = 0;
-                                const OCULUS_TOUCH_AXIS_Y = 1;
-
-                                const OCULUS_TOUCH_BUTTON_STICK = 0;
-                                const OCULUS_TOUCH_BUTTON_TRIGGER = 1;
-                                const OCULUS_TOUCH_BUTTON_GRIP = 2
-                                const OCULUS_TOUCH_BUTTON_A_X = 3;
-                                const OCULUS_TOUCH_BUTTON_B_Y = 4;
 
 
                                 const gamepads = navigator.getGamepads();
                                 for (let i=0; i<gamepads.length; i++) {
                                     const gamepad = gamepads[i];
                                     if (gamepad) {
-                                        //console.log(i, gamepad);
+                                        if (!controllersButtonsOld[gamepad.index])
+                                            controllersButtonsOld[gamepad.index] = {};
+                                        let controllerButtonsOld = controllersButtonsOld[gamepad.index];
+
+                                        const isNewPressed = (button) => gamepad.buttons[button].pressed && !controllerButtonsOld[button];
 
                                         if (gamepad.id == OCULUS_TOUCH_ID_LEFT) {
                                             walkX += -gamepad.axes[OCULUS_TOUCH_AXIS_Y] * walkDirX;
@@ -2029,42 +2052,37 @@
                                             walkX += -gamepad.axes[OCULUS_TOUCH_AXIS_X] * sideX;
                                             walkY += -gamepad.axes[OCULUS_TOUCH_AXIS_X] * sideY;
 
-                                            if (gamepad.buttons[OCULUS_TOUCH_BUTTON_TRIGGER].pressed && !leftTriggerPressed) {
+                                            if (isNewPressed(OCULUS_TOUCH_BUTTON_TRIGGER)) {
                                                 activePlayer.activeItem += 1;
                                                 while (activePlayer.activeItem >= 8) activePlayer.activeItem -= 8;
                                                 setActiveItem(activePlayer.activeItem);
                                             }
 
-                                            if (gamepad.buttons[OCULUS_TOUCH_BUTTON_GRIP].pressed && !leftGripPressed) {
+                                            if (isNewPressed(OCULUS_TOUCH_BUTTON_GRIP)) {
                                                 activePlayer.activeItem -= 1;
                                                 while (activePlayer.activeItem < 0) activePlayer.activeItem += 8;
                                                 setActiveItem(activePlayer.activeItem);
                                             }
-                                            
-                                            //if (gamepad.buttons[OCULUS_TOUCH_BUTTON_A_X].pressed) cameraZ -= walkSpeed;
-
-
-                                            leftTriggerPressed = gamepad.buttons[OCULUS_TOUCH_BUTTON_TRIGGER].pressed;
-                                            leftGripPressed = gamepad.buttons[OCULUS_TOUCH_BUTTON_GRIP].pressed;
-                                            leftAPressed = gamepad.buttons[OCULUS_TOUCH_BUTTON_A_X].pressed;
                                         }
 
                                         if (gamepad.id == OCULUS_TOUCH_ID_RIGHT) {
                                             turnRate += -gamepad.axes[OCULUS_TOUCH_AXIS_X];
 
-                                            if (gamepad.buttons[OCULUS_TOUCH_BUTTON_TRIGGER].pressed && !rightTriggerPressed) shouldDig = true;
-                                            if (gamepad.buttons[OCULUS_TOUCH_BUTTON_GRIP].pressed && !rightGripPressed) shouldPlace = true;
-                                            if (gamepad.buttons[OCULUS_TOUCH_BUTTON_A_X].pressed && !rightAPressed) jump = true;
+                                            if (isNewPressed(OCULUS_TOUCH_BUTTON_TRIGGER)) shouldDig = true;
+                                            if (isNewPressed(OCULUS_TOUCH_BUTTON_GRIP)) shouldPlace = true;
+                                            if (isNewPressed(OCULUS_TOUCH_BUTTON_A_X)) jump = true;
 
-                                            //if (gamepad.buttons[OCULUS_TOUCH_BUTTON_A_X].pressed) cameraZ += walkSpeed;
                                             if (gamepad.buttons[OCULUS_TOUCH_BUTTON_B_Y].pressed) display.exitPresent();
 
-                                            rightTriggerPressed = gamepad.buttons[OCULUS_TOUCH_BUTTON_TRIGGER].pressed;
-                                            rightGripPressed = gamepad.buttons[OCULUS_TOUCH_BUTTON_GRIP].pressed;
-                                            rightAPressed = gamepad.buttons[OCULUS_TOUCH_BUTTON_A_X].pressed;
-
                                             equipHandMatrix = matrixFromPose(gamepad.pose);
-                                        }
+                                        } 
+                                        
+
+
+
+                                        gamepad.buttons.forEach((button, index) => {
+                                            controllerButtonsOld[index] = button.pressed;
+                                        });
                                     }
                                 };
 
@@ -2075,15 +2093,15 @@
 
                                 const oldPlayerZ = activePlayer.pos.z;
 
-                                activePlayer.velocity.x += activePlayer.acceleration.x * 0.016;
-                                activePlayer.velocity.y += activePlayer.acceleration.y * 0.016;
-                                activePlayer.velocity.z += activePlayer.acceleration.z * 0.016;
+                                activePlayer.velocity.x += activePlayer.acceleration.x * delta;
+                                activePlayer.velocity.y += activePlayer.acceleration.y * delta;
+                                activePlayer.velocity.z += activePlayer.acceleration.z * delta;
 
                                 activePlayer.velocity.z = Math.max(activePlayer.velocity.z, -50); // TODO: we fall trough the world at about -60. Probably FPS related
 
-                                activePlayer.pos.x += activePlayer.velocity.x * 0.016;
-                                activePlayer.pos.y += activePlayer.velocity.y * 0.016;
-                                activePlayer.pos.z += activePlayer.velocity.z * 0.016;
+                                activePlayer.pos.x += activePlayer.velocity.x * delta;
+                                activePlayer.pos.y += activePlayer.velocity.y * delta;
+                                activePlayer.pos.z += activePlayer.velocity.z * delta;
 
                                 walkLen = Math.hypot(walkX, walkY);
                                 if (walkLen > 1.0) {
@@ -2092,7 +2110,7 @@
                                 }
 
 
-                                cameraYaw += turnRate * turnSpeed;
+                                activePlayer.rotation.yaw += turnRate * turnSpeed;
 
                                 activePlayer.pos.x += walkX * walkSpeed;
                                 activePlayer.pos.y += walkY * walkSpeed;
@@ -2142,9 +2160,9 @@
 
                                 
 
-                                var cameraInverse = mat4.multiply(mat4.getTranslate(-cameraX,-cameraZ,cameraY), mat4.getYRotation(cameraYaw));
+                                var cameraInverse = mat4.multiply(mat4.getTranslate(-cameraX,-cameraZ,cameraY), mat4.getYRotation(activePlayer.rotation.yaw));
                                 
-                                var camera = mat4.multiply(mat4.getYRotation(-cameraYaw), mat4.getTranslate(cameraX,cameraZ,-cameraY));
+                                var camera = mat4.multiply(mat4.getYRotation(-activePlayer.rotation.yaw), mat4.getTranslate(cameraX,cameraZ,-cameraY));
 
                                 var worldEquipHandMatrix = mat4.multiply(equipHandMatrix, camera);
 
