@@ -76,7 +76,12 @@ function createChunk(x, y) {
     for (var i=0; i<extraLayer; i++) {
 
         for (var j=0; j<16*16; j++) {
-            result.data.push(0);
+
+            if (i<45) {
+                result.data.push(19);
+            } else {
+                result.data.push(0);
+            }
         }
 
     }
@@ -165,8 +170,6 @@ let exposedFunctions = {
 };
 
 onmessage = function(e) {
-    console.log("Worker: message received", e.data);
-
     const func = exposedFunctions[e.data.function];
     const params = e.data.parameters;
     const tag = e.data.tag;
