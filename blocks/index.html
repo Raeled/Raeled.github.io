@@ -1,5 +1,6 @@
 <html>
 <head>
+    <title>Block World</title>
     <script id="3d-vertex-shader" type="x-shader/x-vertex">
         precision highp float;
 
@@ -40,6 +41,8 @@
         void main() {
 
             vec4 diffuse = texture2D(u_texture, v_texCoord);
+
+            if (diffuse.w < 0.1) discard;
 
 
             float direct = dot(v_normal, normalize(-vec3(-1.0,-1.5,-1.0))) * 0.3;
@@ -95,14 +98,24 @@
             position: absolute; 
             left: 50%; bottom: 0px; 
             background-color: rgba(0,0,0,0.7); 
-            width: 480px; height: 60px; 
-            margin-bottom: 10px; margin-left: -240px;
+            width: 540px; height: 60px; 
+            margin-bottom: 10px; margin-left: -270px;
         }
 
-        #inventoryMenu div:first-child .inventoryContainer:first-child { border-top-left-radius: 10px; }
-        #inventoryMenu div:first-child .inventoryContainer:last-child { border-top-right-radius: 10px; }
-        #inventoryMenu div:last-child .inventoryContainer:first-child { border-bottom-left-radius: 10px; }
-        #inventoryMenu div:last-child .inventoryContainer:last-child { border-bottom-right-radius: 10px; }
+        .inventoryGrid {
+            border-radius: 10px; 
+            position: absolute; 
+            width: 540px; 
+            height: 180px; 
+            left: 50%; 
+            margin-left: -270px; 
+            background-color: rgba(0,0,0,0.7);
+        }
+
+        .inventoryGrid div:first-child .inventoryContainer:first-child { border-top-left-radius: 10px; }
+        .inventoryGrid div:first-child .inventoryContainer:last-child { border-top-right-radius: 10px; }
+        .inventoryGrid div:last-child .inventoryContainer:first-child { border-bottom-left-radius: 10px; }
+        .inventoryGrid div:last-child .inventoryContainer:last-child { border-bottom-right-radius: 10px; }
         
 
         #inventoryToolbar .inventoryContainer:first-child {
@@ -129,9 +142,9 @@
 
         .inventoryIcon {
             width: 32px; height: 32px;
-            background-size: 1600%;
+            background-size: 2400%;
             background-position: -100% -100%;
-            background-image: url('default.png');
+            background-image: url('Tileset.png');
             display: inline-block;
             image-rendering: pixelated;
 
@@ -175,8 +188,9 @@
     <div style="position: absolute; left: 50%; top:50%; width: 1px; height: 20px; margin-top: -10px; background-color: #000000;"></div>
     <div style="position: absolute; left: 50%; top:50%; width: 20px; height: 1px; margin-left: -10px; background-color: #000000;"></div>
 
-    <div id="inventoryMenu" style="display: none; border-radius: 10px; position: absolute; bottom: 80px; width: 480px; height: 240px; left: 50%; margin-left: -240px; background-color: rgba(0,0,0,0.7);">
+    <div id="chestMenu" class="inventoryGrid" style="display: none; bottom: 270px;">
         <div style="display: flex;">
+            <div class="inventoryContainer"><div class="inventoryIcon"></div></div>
             <div class="inventoryContainer"><div class="inventoryIcon"></div></div>
             <div class="inventoryContainer"><div class="inventoryIcon"></div></div>
             <div class="inventoryContainer"><div class="inventoryIcon"></div></div>
@@ -192,7 +206,33 @@
             <div class="inventoryContainer"><div class="inventoryIcon"></div></div>
             <div class="inventoryContainer"><div class="inventoryIcon"></div></div>
             <div class="inventoryContainer"><div class="inventoryIcon"></div></div>
-            <div class="inventoryContainer"><div class="inventoryIcon">25</div></div>
+            <div class="inventoryContainer"><div class="inventoryIcon"></div></div>
+            <div class="inventoryContainer"><div class="inventoryIcon"></div></div>
+            <div class="inventoryContainer"><div class="inventoryIcon"></div></div>
+            <div class="inventoryContainer"><div class="inventoryIcon"></div></div>
+        </div>
+        <div style="display: flex;">
+            <div class="inventoryContainer"><div class="inventoryIcon"></div></div>
+            <div class="inventoryContainer"><div class="inventoryIcon"></div></div>
+            <div class="inventoryContainer"><div class="inventoryIcon"></div></div>
+            <div class="inventoryContainer"><div class="inventoryIcon"></div></div>
+            <div class="inventoryContainer"><div class="inventoryIcon"></div></div>
+            <div class="inventoryContainer"><div class="inventoryIcon"></div></div>
+            <div class="inventoryContainer"><div class="inventoryIcon"></div></div>
+            <div class="inventoryContainer"><div class="inventoryIcon"></div></div>
+            <div class="inventoryContainer"><div class="inventoryIcon"></div></div>
+        </div>
+    </div>
+
+    <div id="inventoryMenu" class="inventoryGrid" style="display: none; bottom: 80px;">
+        <div style="display: flex;">
+            <div class="inventoryContainer"><div class="inventoryIcon"></div></div>
+            <div class="inventoryContainer"><div class="inventoryIcon"></div></div>
+            <div class="inventoryContainer"><div class="inventoryIcon"></div></div>
+            <div class="inventoryContainer"><div class="inventoryIcon"></div></div>
+            <div class="inventoryContainer"><div class="inventoryIcon"></div></div>
+            <div class="inventoryContainer"><div class="inventoryIcon"></div></div>
+            <div class="inventoryContainer"><div class="inventoryIcon"></div></div>
             <div class="inventoryContainer"><div class="inventoryIcon"></div></div>
             <div class="inventoryContainer"><div class="inventoryIcon"></div></div>
         </div>
@@ -205,8 +245,10 @@
             <div class="inventoryContainer"><div class="inventoryIcon"></div></div>
             <div class="inventoryContainer"><div class="inventoryIcon"></div></div>
             <div class="inventoryContainer"><div class="inventoryIcon"></div></div>
+            <div class="inventoryContainer"><div class="inventoryIcon"></div></div>
         </div>
         <div style="display: flex;">
+            <div class="inventoryContainer"><div class="inventoryIcon"></div></div>
             <div class="inventoryContainer"><div class="inventoryIcon"></div></div>
             <div class="inventoryContainer"><div class="inventoryIcon"></div></div>
             <div class="inventoryContainer"><div class="inventoryIcon"></div></div>
@@ -219,20 +261,23 @@
     </div>
 
     <div id="inventoryToolbar">
-        <div class="inventoryContainer active"><div class="inventoryIcon" style="background-position: -500% -100%;"></div></div>
-        <div class="inventoryContainer"><div class="inventoryIcon" style="background-position: -200% -000%;"></div></div>
-        <div class="inventoryContainer"><div class="inventoryIcon" style="background-position: -300% -000%;"></div></div>
-        <div class="inventoryContainer"><div class="inventoryIcon" style="background-position: -400% -000%;"></div></div>
-        <div class="inventoryContainer"><div class="inventoryIcon" style="background-position: -000% -200%;"></div></div>
-        <div class="inventoryContainer"><div class="inventoryIcon" style="background-position: -100% -200%;"></div></div>
-        <div class="inventoryContainer"><div class="inventoryIcon" style="background-position: -200% -200%;"></div></div>
-        <div class="inventoryContainer"><div class="inventoryIcon" style="background-position: -200% -300%;"></div></div>
+        <div class="inventoryContainer active"><div class="inventoryIcon"></div></div>
+        <div class="inventoryContainer"><div class="inventoryIcon"></div></div>
+        <div class="inventoryContainer"><div class="inventoryIcon"></div></div>
+        <div class="inventoryContainer"><div class="inventoryIcon"></div></div>
+        <div class="inventoryContainer"><div class="inventoryIcon"></div></div>
+        <div class="inventoryContainer"><div class="inventoryIcon"></div></div>
+        <div class="inventoryContainer"><div class="inventoryIcon"></div></div>
+        <div class="inventoryContainer"><div class="inventoryIcon"></div></div>
+        <div class="inventoryContainer"><div class="inventoryIcon"></div></div>
     </div>
 
     <div id="menu" style="display: none;">
         <div id="menu_save">Save</div>
         <div id="menu_continue">Continue</div>
     </div>
+
+    <input type="text" id="commandPrompt" style="display: none; position: absolute; left: 0px; width: 100%; padding: 5px; bottom: 0px;"></input>
 
     <script>
 
@@ -257,18 +302,34 @@
             }
         }
 
+        var activeChest = [null, null, null, {blockType: 21, blockCount: 22}, null, null, null, null, null,
+                           null, null, null, null, null, null, null, null, null,
+                           null, null, null, null, null, null, null, null, null];
+
         window.onmouseup = e => {
             UICanDrop = true;
 
             //console.log(e);
         }
         
+        function countStr(count) {
+            if (count == Infinity) return String.fromCharCode(0x221e);
+            return count.toFixed(0);
+        }
+
         Array.from(document.querySelectorAll("#inventoryToolbar .inventoryContainer > .inventoryIcon")).forEach((element, index) => {
             element.inventoryIndex = index;
+            element.inventoryType = "inventory";
         });
 
         Array.from(document.querySelectorAll("#inventoryMenu .inventoryContainer > .inventoryIcon")).forEach((element, index) => {
-            element.inventoryIndex = index + 8;
+            element.inventoryIndex = index + 9;
+            element.inventoryType = "inventory";
+        });
+
+        Array.from(document.querySelectorAll("#chestMenu .inventoryContainer > .inventoryIcon")).forEach((element, index) => {
+            element.inventoryIndex = index;
+            element.inventoryType = "chest";
         });
 
         Array.from(document.querySelectorAll(".inventoryContainer > .inventoryIcon")).forEach(element => {
@@ -276,13 +337,14 @@
                 if (UIDragging) return;
 
                 //console.log(element.inventoryIndex);
+                let inventoryPool = element.inventoryType == "inventory" ? activePlayer.inventory : activeChest;
 
 
-                UIDragging = {id: activePlayer.inventory[element.inventoryIndex]};
+                UIDragging = {id: inventoryPool[element.inventoryIndex]};
                 UICanDrop = false;
                 UIDragOffset = [e.offsetX, e.offsetY];
 
-                activePlayer.inventory[element.inventoryIndex] = null;
+                inventoryPool[element.inventoryIndex] = null;
 
                 UIDragElement.style.display = "";
                 UIDragElement.style.backgroundPosition = this.style.backgroundPosition;
@@ -299,6 +361,8 @@
         Array.from(document.getElementsByClassName("inventoryContainer")).forEach(element => {
             element.onmousedown = function(e) {
 
+                let inventoryPool = element.inventoryItem.inventoryType == "inventory" ? activePlayer.inventory : activeChest;
+
                 if (UIDragging && UICanDrop) {
 
                     if (element.inventoryItem.style.display == "none") {
@@ -306,16 +370,16 @@
                         element.inventoryItem.style.backgroundPosition = UIDragElement.style.backgroundPosition;
                         element.inventoryItem.innerText = UIDragElement.innerText;
 
-                        activePlayer.inventory[element.inventoryItem.inventoryIndex] = UIDragging.id;
+                        inventoryPool[element.inventoryItem.inventoryIndex] = UIDragging.id;
 
                         UIDragging = null;
                         UIDragElement.style.display = "none";
                     } else {
                         const oldPosition = element.inventoryItem.style.backgroundPosition;
                         const oldCount = element.inventoryItem.innerText;
-                        const oldItemId = activePlayer.inventory[element.inventoryItem.inventoryIndex];
+                        const oldItemId = inventoryPool[element.inventoryItem.inventoryIndex];
 
-                        activePlayer.inventory[element.inventoryItem.inventoryIndex] = UIDragging.id;
+                        inventoryPool[element.inventoryItem.inventoryIndex] = UIDragging.id;
                         UIDragging = {id: oldItemId};
 
                         element.inventoryItem.style.display = "";
@@ -752,39 +816,50 @@
 
         
 
+        var commands = {
+            all: {},
+            addFunction: function(f) {
+                this.all[f.name.toLowerCase()] = f;
+            },
+            addProperty: function(name, owner) {
+                if (!owner) owner = window;
+
+                this.all[name.toLowerCase()] = (newVal) => {
+                    if (newVal) { owner[name] = newVal; } 
+                    else { console.log(name, owner[name]); }
+                }
+            }
+        };
         
 
         
-        
-
-
         var blockTypes = [
             { name: "air", block: false },
-            { name: "bedrock", block: true, image: 17 },
-            { name: "stone", block: true, image: 1 },
-            { name: "coblestone", block: true, image: 16 },
-            { name: "dirt", block: true, image: 2 },
-            { name: "grass", block: true, image: [10*16 + 9, 3, 3, 3, 3, 2] },
-            { name: "planks", block: true, image: 4 },
-            { name: "bricks", block: true, image: 7 },
+            { name: "bedrock", block: true, image: 7 },
+            { name: "stone", block: true, image: 24 },
+            { name: "cobblestone", block: true, image: 15*24+20 },
+            { name: "dirt", block: true, image: 2*24 },
+            { name: "grass", block: true, image: [3, 4, 4, 4, 4, 2*24] },
+            { name: "planks", block: true, image: 3*24 },
+            { name: "bricks", block: true, image: 15*24+22 },
 
-            { name: "tree", block: true, image: [21,20,20,20,20,21] },
-            { name: "leafes", block: true, image: 3*16 + 4 },
-            { name: "coalore", block: true, image: 2*16 + 2 },
-            { name: "ironore", block: true, image: 2*16 + 1 },
-            { name: "goldore", block: true, image: 2*16 + 0 },
-            { name: "diamondore", block: true, image: 3*16 + 2 },
-            { name: "redstoneore", block: true, image: 3*16 + 3 },
+            { name: "tree", block: true, image: [10*24+12,10*24+0,10*24+0,10*24+0,10*24+0,10*24+12] },
+            { name: "leaves", block: true, transparent: true, image: 16*24+20 },
+            { name: "coalore", block: true, image: 4*24 + 0 },
+            { name: "ironore", block: true, image: 4*24 + 1 },
+            { name: "goldore", block: true, image: 4*24 + 2 },
+            { name: "diamondore", block: true, image: 4*24 + 3 },
+            { name: "redstoneore", block: true, image: 4*24 + 4 },
 
-            { name: "tnt", block: true, image: [9,8,8,8,8,10]},
-            { name: "netherrock", block: true, image: 6*16 + 7},
-            { name: "obsidian", block: true, image: 11*16 + 7},
-            { name: "lava", block: false, liquid: true, image: 14*16 + 13 },
-            { name: "water", block: false, liquid: true, image: 12*16 + 13},
-            { name: "glass", block: true, image: 3*16 + 1},
-            { name: "chest", block: true, image: [25, 27, 26, 26, 26, 25]},
-            { name: "workbench", block: true, image: [43, 59, 59, 59, 59, 4]},
-            { name: "furnace", block: true, image: [62,44,45,45,45,62]},
+            { name: "tnt", block: true, image: [7*24+6, 7*24+5, 7*24+5, 7*24+5, 7*24+5, 7*24+7]},
+            { name: "netherrack", block: true, image: 5*24+1},
+            { name: "obsidian", block: true, image: 15*24+23},
+            { name: "lava", block: false, liquid: true, image: 37*24},
+            { name: "water", block: false, liquid: true, image: 36*24},
+            { name: "glass", block: true, transparent: true, image: 2*24 + 7},
+            { name: "chest", block: true, image: [47*24+17, 47*24+19, 47*24+18, 47*24+18, 47*24+18, 47*24+17]},
+            { name: "workbench", block: true, image: [24*24+14, 24*24+13, 24*24+13, 24*24+12, 24*24+12, 3*24+0]},
+            { name: "furnace", block: true, image: [13*24, 12*24+2, 12*24+6, 12*24+6, 12*24+6, 13*24]},
         ];
 
         // convert single image to 6 sided array
@@ -838,7 +913,8 @@
         const atlasPixel = 1/atlasSize;
 
         var img = new Image();
-        img.src = "default.png";
+        //img.src = "default.png";
+        img.src = "Tileset.png";
         img.onload = () => {
 
             let atlasCanvas = document.createElement("canvas");
@@ -852,8 +928,8 @@
             atlasContext.imageSmoothingEnabled = false;
 
             blockTypeImageMap.forEach((dst, src) => {
-                srcX = (src % 16) * 16;
-                srcY = (Math.floor(src / 16)) * 16;
+                srcX = (src % 24) * 16;
+                srcY = (Math.floor(src / 24)) * 16;
                 dstX = (dst % atlasPerRow) * atlasItemSize;
                 dstY = (Math.floor(dst / atlasPerRow)) * atlasItemSize;
 
@@ -895,11 +971,10 @@
             acceleration: { x: 0, y: 0, z: -35.0},
             velocity: { x: 0, y: 0, z: 0},
             standing: false,
-            inventory: [ 8,  4,    5,    6,   12,   21,   22,   23,
-                         2,  3,    4,    5,    6,    7,    8, null,
-                         9, 10,   11,   12,   13,   14, null, null,
-                        15, 16,   17,   18,   19,   20,   21, null,
-                        22, 23, null, null, null, null, null, null],
+            inventory: [  20,    4,    5,    6,   12,   21,   22,   23,   17,
+                           2,    3,   18,   19,   13,    7,    8,   15,   16,
+                           9,   10,   11,   14, null, null, null, null, null,
+                        null, null, null, null, null, null, null, null, null],
             activeItem: 0,
             height: 1.8,
             radius: 0.4,
@@ -919,11 +994,10 @@
             acceleration: { x: 0, y: 0, z: -35.0},
             velocity: { x: 0, y: 0, z: 0},
             standing: false,
-            inventory: [null, null, null, null, null, null, null, null,
-                        null, null, null, null, null, null, null, null,
-                        null, null, null, null, null, null, null, null,
-                        null, null, null, null, null, null, null, null,
-                        null, null, null, null, null, null, null, null],
+            inventory: [null, null, null, null, null, null, null, null, null,
+                        null, null, null, null, null, null, null, null, null,
+                        null, null, null, null, null, null, null, null, null,
+                        null, null, null, null, null, null, null, null, null],
             activeItem: 0,
             height: 1.8,
             radius: 0.4,
@@ -950,6 +1024,62 @@
                 });
             })
         }
+        commands.addFunction(makeGifts);
+
+        function throwGift(blockType) {
+            if (!blockType) return;
+
+            if (typeof blockType == "string") {
+                blockType = blockTypes.findIndex(type => type.name.toLowerCase() == blockType.toLowerCase())
+            }
+
+            if (blockType < 0 || blockType >= blockTypes.length) {
+                console.log("invalid bockType");
+                return;
+            }
+
+            const dirX = -Math.sin(activePlayer.rotation.yaw) * Math.cos(activePlayer.rotation.pitch);
+            const dirY =  Math.cos(activePlayer.rotation.yaw) * Math.cos(activePlayer.rotation.pitch);
+            const dirZ =  Math.sin(activePlayer.rotation.pitch);
+
+            entities.push({
+                type: ENTITY_TYPE_ITEM,
+                pos: {x: activePlayer.pos.x, y: activePlayer.pos.y, z: activePlayer.pos.z + activePlayer.eyeHeight},
+                rotation: {pitch: 0, yaw: 0},
+                acceleration: { x: 0, y: 0, z: -30.0},
+                velocity: { x: dirX * 10, y: dirY * 10, z: dirZ * 10},
+                height: 0.4,
+                radius: 0.2,
+                blockType: blockType,
+                blockCount: 64
+            });
+
+        }
+        commands.addFunction(throwGift);
+
+        function give(blockType) {
+            if (!blockType) return;
+
+            if (typeof blockType == "string") {
+                blockType = blockTypes.findIndex(type => type.name.toLowerCase() == blockType.toLowerCase())
+            }
+
+            if (blockType < 0 || blockType >= blockTypes.length) {
+                console.log("invalid bockType");
+                return;
+            }
+
+            for (let i=0; i<8*4; i++)
+                if (activePlayer.inventory[i] == null) {
+                    activePlayer.inventory[i] = {blockType, blockCount: 64 };
+                    updateUI();
+                    break;
+                }
+        }
+        commands.addFunction(give);
+
+        commands.addProperty("fov", window);
+        commands.addProperty("renderDistance", window);
 
         
 
@@ -960,14 +1090,16 @@
         function updateUI() {
             Array.from(document.querySelectorAll(".inventoryContainer .inventoryIcon")).forEach((icon, index) => {
 
-                const item = activePlayer.inventory[icon.inventoryIndex];
+                let inventoryPool = icon.inventoryType == "inventory" ? activePlayer.inventory : activeChest;
+
+                const item = inventoryPool[icon.inventoryIndex];
                 if (item) {
                     const itemDef = blockTypes[item.blockType];
 
-                    const backgroundPositionX = itemDef.iconImage % 16;
-                    const backgroundPositionY = Math.floor(itemDef.iconImage / 16);
+                    const backgroundPositionX = itemDef.iconImage % 24;
+                    const backgroundPositionY = Math.floor(itemDef.iconImage / 24);
 
-                    icon.innerText = item.blockCount;
+                    icon.innerText = countStr(item.blockCount);
                     icon.style.display = "";
                     icon.style.backgroundPosition = "-" + backgroundPositionX + "00% -" + backgroundPositionY + "00%";
                 } else {
@@ -1278,6 +1410,9 @@
 
         var backgroundWorker = new Worker('worker.js');
         backgroundWorker.onmessage = function(e) {
+            console.log("backgroundWorker result");
+
+
             e.data.result.elementCount = 0;
             e.data.result.dirty = true;
             e.data.result.saved = true;
@@ -1333,12 +1468,20 @@
                     
                         const blockTypeInfo = blockTypes[chunk.data[posOffset(x,y,z)]];
                         
-
-
-                        
                         if (blockTypeInfo.block) {
+                            const above = z == 127 ? null : blockTypes[chunk.data[posOffset(x,y,z+1)]];
+                            const below = z == 0 ? null : blockTypes[chunk.data[posOffset(x,y,z-1)]];
+                            const front = y < 15 ? blockTypes[chunk.data[posOffset(x,y+1,z)]] 
+                                                 : blockTypes[frontChunk.data[posOffset(x,0,z)]];
+                            const back = y > 0 ? blockTypes[chunk.data[posOffset(x,y-1,z)]] 
+                                               : blockTypes[backChunk.data[posOffset(x,15,z)]];
+                            const left = x > 0 ? blockTypes[chunk.data[posOffset(x-1,y,z)]] 
+                                               : blockTypes[leftChunk.data[posOffset(15,y,z)]];
+                            const right = x < 15 ? blockTypes[chunk.data[posOffset(x+1,y,z)]] 
+                                                 : blockTypes[rightChunk.data[posOffset(0,y,z)]];
+
                             // Top
-                            if (z == 127 || !blockTypes[chunk.data[posOffset(x,y,z+1)]].block) {
+                            if (!above || !above.block || (above.transparent && !blockTypeInfo.transparent)) {
                                 calcTextureOffsets(blockTypeInfo.image[0], textureOffset);
                                 meshData.push(
                                     x + 0,  z+1,  -y-0, textureOffset.ax, textureOffset.ay,      0,  1,  0,
@@ -1352,7 +1495,7 @@
                             }
 
                             // Bottom
-                            if (z == 0 || !blockTypes[chunk.data[posOffset(x,y,z-1)]].block) {
+                            if (!below || !below.block || (below.transparent && !blockTypeInfo.transparent)) {
                                 calcTextureOffsets(blockTypeInfo.image[5], textureOffset);
                                 meshData.push(
                                     x + 0,  z+0,  -y-0, textureOffset.ax, textureOffset.ay,      0, -1,  0,
@@ -1365,8 +1508,11 @@
                                 )
                             }
 
+                            
+                            
+
                             // Front
-                            if ((y == 15 && !blockTypes[frontChunk.data[posOffset(x,0,z)]].block) || (y < 15 && !blockTypes[chunk.data[posOffset(x,y+1,z)]].block)) {
+                            if (!front || !front.block || (front.transparent && !blockTypeInfo.transparent)) {
                                 calcTextureOffsets(blockTypeInfo.image[1], textureOffset);
                                 meshData.push(
                                     x + 0,  z+0,  -y-1, textureOffset.ax, textureOffset.by,      0,  0,  1,
@@ -1380,7 +1526,7 @@
                             }
 
                             // Back
-                            if ((y == 0 && !blockTypes[backChunk.data[posOffset(x,15,z)]].block) || (y > 0 && !blockTypes[chunk.data[posOffset(x,y-1,z)]].block)) {
+                            if (!back || !back.block || (back.transparent && !blockTypeInfo.transparent)) {
                                 calcTextureOffsets(blockTypeInfo.image[2], textureOffset);
                                 meshData.push(
                                     x + 0,  z+0,  -y-0, textureOffset.bx, textureOffset.by,      0,  0, -1,
@@ -1393,8 +1539,10 @@
                                 );
                             }
 
+
+
                             // Left
-                            if ((x == 0 && !blockTypes[leftChunk.data[posOffset(15,y,z)]].block) || (x > 0 && !blockTypes[chunk.data[posOffset(x-1,y,z)]].block)) {
+                            if (!left || !left.block || (left.transparent && !blockTypeInfo.transparent)) {
                                 calcTextureOffsets(blockTypeInfo.image[3], textureOffset);
                                 meshData.push(
                                     x + 0,  z+0,  -y-1, textureOffset.bx, textureOffset.by,     -1,  0,  0,
@@ -1408,7 +1556,7 @@
                             }
 
                             // Right
-                            if ((x == 15 && !blockTypes[rightChunk.data[posOffset(0,y,z)]].block) || (x < 15 && !blockTypes[chunk.data[posOffset(x+1,y,z)]].block)) {
+                            if (!right || !right.block || (right.transparent && !blockTypeInfo.transparent)) {
                                 calcTextureOffsets(blockTypeInfo.image[4], textureOffset);
                                 meshData.push(
                                     x + 1,  z+0,  -y-1, textureOffset.ax, textureOffset.by,      1,  0,  0,
@@ -1864,8 +2012,43 @@
             activePlayer.pos.z = z + 3;
         }
 
+        commandPrompt.onkeydown = e => {
+            switch (e.key.toLowerCase()) {
+                case "enter": 
+
+                    if (commandPrompt.value.startsWith("/")) {
+
+                        commandParameters = commandPrompt.value.substring(1).split(" ");
+                        commandName = commandParameters.shift();
+                        command = commands.all[commandName.toLowerCase()];
+                    }
+
+                    
+                    try {
+                        if (!command) throw "Command \"" + commandName + "\" not found";
+
+                        const convertParam = val => {
+                            try { return JSON.parse(val); } 
+                            catch(e) { return val; }
+                        }
+
+                        command.apply(null, commandParameters.map(convertParam));
+                    } catch(e) {
+                        console.error(e);
+                    }
+                    
+
+
+                case "escape": 
+                    commandPrompt.value = "";
+                    commandPrompt.style.display = "none"; 
+                    break;
+            }
+        }
 
         window.onkeydown = e => {
+            if (document.activeElement == commandPrompt) return;
+
             const keyCode = e.key.toLowerCase();
             if (!keys[keyCode]) newKeys[keyCode] = true;
             keys[keyCode] = true;
@@ -1985,50 +2168,64 @@
                     const allowDist = entity.radius + otherEntity.radius;
 
                     if (allowDist >= dist) {
-                        if (entity.type == ENTITY_TYPE_PLAYER && otherEntity.type == ENTITY_TYPE_ITEM) {
 
-                            let shouldUpdateUI = false;
+                        const Ea = entity.pos.z + entity.height;
+                        const Eb = entity.pos.z;
 
-                            // 1st try to append to existing stack
-                            for (let index in entity.inventory) {
-                                let inventoryItem = entity.inventory[index];
-                                if (inventoryItem && inventoryItem.blockType == otherEntity.blockType) {
+                        const Oa = otherEntity.pos.z + otherEntity.height;
+                        const Ob = otherEntity.pos.z;
 
-                                    const max = 64 - inventoryItem.blockCount;
-                                    const toTake = Math.min(max, otherEntity.blockCount);
+                        const horizontalHit = (Ea >= Ob && Ob >= Eb) ||
+                                              (Ea >= Oa && Oa >= Eb) ||
+                                              (Oa >= Eb && Eb >= Ob) ||
+                                              (Oa >= Ea && Ea >= Ob);
 
-                                    if (toTake >= 1) {
+                        if (horizontalHit) {
+                            if (entity.type == ENTITY_TYPE_PLAYER && otherEntity.type == ENTITY_TYPE_ITEM) {
 
-                                        inventoryItem.blockCount += toTake;
-                                        otherEntity.blockCount -= toTake;
-                                        shouldUpdateUI = true;
+                                let shouldUpdateUI = false;
+
+                                // 1st try to append to existing stack
+                                for (let index in entity.inventory) {
+                                    let inventoryItem = entity.inventory[index];
+                                    if (inventoryItem && inventoryItem.blockType == otherEntity.blockType) {
+
+                                        const max = 64 - inventoryItem.blockCount;
+                                        const toTake = Math.min(max, otherEntity.blockCount);
+
+                                        if (toTake >= 1) {
+
+                                            inventoryItem.blockCount += toTake;
+                                            otherEntity.blockCount -= toTake;
+                                            shouldUpdateUI = true;
+                                        }
                                     }
                                 }
-                            }
 
-                            // try to add the rest to empty slots
-                            for (let index in entity.inventory) {
-                                if (!entity.inventory[index]) {
-                                    const toTake = Math.min(64, otherEntity.blockCount);
+                                // try to add the rest to empty slots
+                                for (let index in entity.inventory) {
+                                    if (!entity.inventory[index]) {
+                                        const toTake = Math.min(64, otherEntity.blockCount);
 
-                                    if (toTake >= 1) {
-                                        entity.inventory[index] = {blockType: otherEntity.blockType, blockCount: toTake};
+                                        if (toTake >= 1) {
+                                            entity.inventory[index] = {blockType: otherEntity.blockType, blockCount: toTake};
 
-                                        otherEntity.blockCount -= toTake;
-                                        shouldUpdateUI = true;
+                                            otherEntity.blockCount -= toTake;
+                                            shouldUpdateUI = true;
+                                        }
                                     }
                                 }
+
+                                if (otherEntity.blockCount <= 0) otherEntity.deleted = true;
+
+                                if (shouldUpdateUI) updateUI();
                             }
 
-                            if (otherEntity.blockCount <= 0) otherEntity.deleted = true;
-
-                            if (shouldUpdateUI) updateUI();
-                        }
-
-                        if (entity.type == ENTITY_TYPE_ITEM && otherEntity.type == ENTITY_TYPE_ITEM) {
-                            if (entity.blockType == otherEntity.blockType) {
-                                entity.blockCount += otherEntity.blockCount;
-                                otherEntity.deleted = true;
+                            if (entity.type == ENTITY_TYPE_ITEM && otherEntity.type == ENTITY_TYPE_ITEM) {
+                                if (entity.blockType == otherEntity.blockType) {
+                                    entity.blockCount += otherEntity.blockCount;
+                                    otherEntity.deleted = true;
+                                }
                             }
                         }
                     }
@@ -2190,7 +2387,18 @@
         let controllersButtonsOld = [];
 
         function mainloop() {
+            
+
             const delta = Math.min(0.1, getDeltaTime());
+
+
+            if (newKeys["/"]) {
+                commandPrompt.style.display = "";
+                commandPrompt.value = "/";
+                commandPrompt.focus();
+                commandPrompt.select();
+                commandPrompt.setSelectionRange(1,1);
+            }
 
             if (!document.pointerLockElement) {
                 document.getElementById("menu").style.display = "";
@@ -2246,7 +2454,7 @@
             if (clickRight) shouldPlace = true;
 
             if (newKeys[" "]) jump = true;
-            if (newKeys["t"]) shouldThrow = true;
+            if (newKeys["q"]) shouldThrow = true;
 
             if (keys["1"]) { activePlayer.activeItem = 0; setActiveItem(activePlayer.activeItem); }
             if (keys["2"]) { activePlayer.activeItem = 1; setActiveItem(activePlayer.activeItem); }
@@ -2256,28 +2464,31 @@
             if (keys["6"]) { activePlayer.activeItem = 5; setActiveItem(activePlayer.activeItem); }
             if (keys["7"]) { activePlayer.activeItem = 6; setActiveItem(activePlayer.activeItem); }
             if (keys["8"]) { activePlayer.activeItem = 7; setActiveItem(activePlayer.activeItem); }
+            if (keys["9"]) { activePlayer.activeItem = 8; setActiveItem(activePlayer.activeItem); }
 
             if (newKeys["["]) { 
                 activePlayer.activeItem -= 1;
-                while (activePlayer.activeItem < 0) activePlayer.activeItem += 8;
+                while (activePlayer.activeItem < 0) activePlayer.activeItem += 9;
                 setActiveItem(activePlayer.activeItem);
             }
             if (newKeys["]"]) {  
                 activePlayer.activeItem += 1;
-                while (activePlayer.activeItem >= 8) activePlayer.activeItem -= 8;
+                while (activePlayer.activeItem >= 9) activePlayer.activeItem -= 9;
                 setActiveItem(activePlayer.activeItem);
             }
 
             if (newKeys["z"]) topView = !topView;
 
-            if (newKeys["i"]) {
+            if (newKeys["e"]) {
                 var inventoryMenu = document.getElementById("inventoryMenu");
+                var chestMenu = document.getElementById("chestMenu");
 
                 if (inventoryMenu.style.display == "none") {
                     inventoryMenu.style.display = "";
                     document.exitPointerLock();
                 } else {
                     inventoryMenu.style.display = "none";
+                    chestMenu.style.display = "none";
                     canvas.requestPointerLock();
                 }
             }
@@ -2428,16 +2639,44 @@
             document.getElementById("velocity").innerText = "velocity: X: " + activePlayer.velocity.x.toFixed(3) + ", Y: " + activePlayer.velocity.y.toFixed(3) + ", Z:" + activePlayer.velocity.z.toFixed(3);
 
             if (shouldPlace) {
-                activeInventory = activePlayer.inventory[activePlayer.activeItem];
+                const blockType = world.getBlock(rayResult.cursor.x, rayResult.cursor.y, rayResult.cursor.z);
 
-                if (activeInventory) {
-                    world.setBlock(rayResult.prevCursor.x, rayResult.prevCursor.y, rayResult.prevCursor.z, activeInventory.blockType);
-                    activeInventory.blockCount -= 1;
 
-                    if (activeInventory.blockCount <= 0) {
-                        activePlayer.inventory[activePlayer.activeItem] = null;
-                    }
+                if (blockType == 21 /* magic number for chest */) {
+
+
+
+                    let chestChunk = world.findChunk(rayResult.cursor.x/16, rayResult.cursor.y/16);
+                    let chestIndex = posOffset(rayResult.cursor.x - Math.floor(rayResult.cursor.x/16)*16, 
+                                               rayResult.cursor.y - Math.floor(rayResult.cursor.y/16)*16,
+                                               rayResult.cursor.z);
+                    
+                    if (!chestChunk.chests) chestChunk.chests = {};
+                    if (!chestChunk.chests[chestIndex]) chestChunk.chests[chestIndex] = (new Array(9*3)).fill(null);
+
+                    activeChest = chestChunk.chests[chestIndex];
                     updateUI();
+
+                    var inventoryMenu = document.getElementById("inventoryMenu");
+                    var chestMenu = document.getElementById("chestMenu");
+
+                    inventoryMenu.style.display = "";
+                    chestMenu.style.display = "";
+                    document.exitPointerLock();
+
+                } else {
+
+                    activeInventory = activePlayer.inventory[activePlayer.activeItem];
+
+                    if (activeInventory) {
+                        world.setBlock(rayResult.prevCursor.x, rayResult.prevCursor.y, rayResult.prevCursor.z, activeInventory.blockType);
+                        activeInventory.blockCount -= 1;
+
+                        if (activeInventory.blockCount <= 0) {
+                            activePlayer.inventory[activePlayer.activeItem] = null;
+                        }
+                        updateUI();
+                    }
                 }
             }
 
@@ -2445,18 +2684,49 @@
                 const blockType = world.getBlock(rayResult.cursor.x, rayResult.cursor.y, rayResult.cursor.z);
                 world.setBlock(rayResult.cursor.x, rayResult.cursor.y, rayResult.cursor.z, 0);
 
+                const randomDir = Math.random() * Math.PI * 2;
                 const newEntity = {
                     type: ENTITY_TYPE_ITEM,
                     pos: {x: rayResult.cursor.x + 0.5, y: rayResult.cursor.y + 0.5, z: rayResult.cursor.z},
                     rotation: {pitch: 0, yaw: 0},
                     acceleration: { x: 0, y: 0, z: -30.0},
-                    velocity: { x: 0, y: 0, z: 5},
+                    velocity: { x: Math.sin(randomDir), y: Math.cos(randomDir), z: 5},
                     height: 0.4,
                     radius: 0.2,
                     blockType: blockType,
                     blockCount: 1,
                 };
                 entities.push(newEntity);
+
+                if (blockType == 21) {
+                    let chestChunk = world.findChunk(rayResult.cursor.x/16, rayResult.cursor.y/16);
+                    let chestIndex = posOffset(rayResult.cursor.x - Math.floor(rayResult.cursor.x/16)*16, 
+                                               rayResult.cursor.y - Math.floor(rayResult.cursor.y/16)*16,
+                                               rayResult.cursor.z);
+                    
+                    if (chestChunk.chests && chestChunk.chests[chestIndex]) {
+                        for (item of chestChunk.chests[chestIndex]) {
+                            if (item) {
+                                const randomDir = Math.random() * Math.PI * 2;
+
+                                const newEntity = {
+                                    type: ENTITY_TYPE_ITEM,
+                                    pos: {x: rayResult.cursor.x + 0.5, y: rayResult.cursor.y + 0.5, z: rayResult.cursor.z},
+                                    rotation: {pitch: 0, yaw: 0},
+                                    acceleration: { x: 0, y: 0, z: -30.0},
+                                    velocity: { x: Math.sin(randomDir), y: Math.cos(randomDir), z: 5},
+                                    height: 0.4,
+                                    radius: 0.2,
+                                    blockType: item.blockType,
+                                    blockCount: item.blockCount,
+                                };
+                                entities.push(newEntity);
+                            }
+                        }
+
+                        delete chestChunk.chests[chestIndex];
+                    }
+                }
             }
 
             clickLeft = false;
@@ -2478,7 +2748,7 @@
             gl.clearColor(world.backgroundColor[0], world.backgroundColor[1], world.backgroundColor[2], 1.0);
             gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-            draw(projection, camera, cameraX, cameraY, rayResult.cursor.x, rayResult.cursor.y, rayResult.cursor.z);
+            draw(projection, camera, cameraX, cameraY, rayResult.cursor.x, rayResult.cursor.y, rayResult.cursor.z, rayResult.prevCursor);
             
 
 
@@ -2504,7 +2774,8 @@
 
 
 
-        function draw(projectionMatrix, viewMatrix, cameraX, cameraY, cursorX, cursorY, cursorZ) {
+        function draw(projectionMatrix, viewMatrix, cameraX, cameraY, cursorX, cursorY, cursorZ, prevCursor) {
+
             // TODO (maybe): get cameraX and cameraY from viewMatrix
 
 
@@ -2902,8 +3173,27 @@
 
                 gl.uniform4f(frustumProgram.u_color, 0,0,0,1);
                 gl.drawElements(gl.LINES, 8*3, gl.UNSIGNED_BYTE, 12*3);
-                gl.uniform4f(frustumProgram.u_color, 0,0,1,0.5);
-                gl.drawElements(gl.TRIANGLES, 6*6, gl.UNSIGNED_BYTE, 0);
+                gl.uniform4f(frustumProgram.u_color, 0,0,1,0.2);
+                //gl.drawElements(gl.TRIANGLES, 6*6, gl.UNSIGNED_BYTE, 0);
+                //gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_BYTE, 0);
+
+
+                if (prevCursor.y > cursorY) {
+                    gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_BYTE, 0*6);
+                } else if (prevCursor.x > cursorX) {
+                    gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_BYTE, 1*6);
+                } else if (prevCursor.y < cursorY) {
+                    gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_BYTE, 2*6);
+                } else if (prevCursor.x < cursorX) {
+                    gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_BYTE, 3*6);
+                } else if (prevCursor.z > cursorZ) {
+                    gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_BYTE, 4*6);
+                } else if (prevCursor.z < cursorZ) {
+                    gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_BYTE, 5*6);
+                } else {
+                    gl.drawElements(gl.TRIANGLES, 6*6, gl.UNSIGNED_BYTE, 0);
+                }
+
 
                 gl.disable(gl.BLEND);
             }
@@ -3252,11 +3542,11 @@
 
                                 gl.viewport(0, 0, canvas.width/2, canvas.height);
                                 equipHandMatrix = mat4.multiply(originalEquipHandMatrix, frameData.leftViewMatrix);
-                                draw(frameData.leftProjectionMatrix, mat4.multiply(cameraInverse, frameData.leftViewMatrix), cameraX, cameraY, rayResult.cursor.x, rayResult.cursor.y, rayResult.cursor.z);
+                                draw(frameData.leftProjectionMatrix, mat4.multiply(cameraInverse, frameData.leftViewMatrix), cameraX, cameraY, rayResult.cursor.x, rayResult.cursor.y, rayResult.cursor.z, rayResult.prevCursor);
 
                                 gl.viewport(canvas.width/2, 0, canvas.width/2, canvas.height);
                                 equipHandMatrix = mat4.multiply(originalEquipHandMatrix, frameData.rightViewMatrix);
-                                draw(frameData.rightProjectionMatrix, mat4.multiply(cameraInverse, frameData.rightViewMatrix), cameraX, cameraY, rayResult.cursor.x, rayResult.cursor.y, rayResult.cursor.z);
+                                draw(frameData.rightProjectionMatrix, mat4.multiply(cameraInverse, frameData.rightViewMatrix), cameraX, cameraY, rayResult.cursor.x, rayResult.cursor.y, rayResult.cursor.z, rayResult.prevCursor);
 
                                 display.submitFrame();
 
